@@ -490,6 +490,26 @@ select:focus {
   box-shadow: 0 16px 32px rgba(0, 0, 0, 0.28);
 }
 
+.thread-card.pinned {
+  border-color: rgba(246, 211, 101, 0.58);
+  box-shadow: 0 0 20px rgba(246, 211, 101, 0.12);
+}
+
+.thread-card.locked {
+  opacity: 0.82;
+}
+
+.thread-card.unread h3::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+}
+
 .thread-card::before {
   content: "";
   display: block;

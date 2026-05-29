@@ -270,6 +270,9 @@ function getState() {
 function saveState(payload) {
   const state = {
     threads: Array.isArray(payload.threads) ? payload.threads : [],
+    threadReports: Array.isArray(payload.threadReports) ? payload.threadReports : [],
+    threadSubscriptions: payload.threadSubscriptions && typeof payload.threadSubscriptions === "object" ? payload.threadSubscriptions : {},
+    readThreads: payload.readThreads && typeof payload.readThreads === "object" ? payload.readThreads : {},
     members: payload.members && typeof payload.members === "object" ? payload.members : {},
     chats: payload.chats && typeof payload.chats === "object" ? payload.chats : {},
     memberTemplates: payload.memberTemplates && typeof payload.memberTemplates === "object" ? payload.memberTemplates : {},

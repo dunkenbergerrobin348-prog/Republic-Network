@@ -138,6 +138,9 @@ const state = {
   adminUsers: [],
   auditEntries: [],
   threads: [],
+  threadReports: [],
+  threadSubscriptions: {},
+  readThreads: {},
   access: {},
   members: {},
   chats: {},
@@ -389,6 +392,9 @@ async function loadState() {
       const shared = payload.state;
       backendAvailable = true;
       state.threads = shared?.threads || seedThreads;
+      state.threadReports = shared?.threadReports || [];
+      state.threadSubscriptions = shared?.threadSubscriptions || {};
+      state.readThreads = shared?.readThreads || {};
       state.members = shared?.members || {};
       state.chats = shared?.chats || {};
       state.memberTemplates = shared?.memberTemplates || {};
@@ -414,6 +420,9 @@ async function loadState() {
   if (sharedBackup) {
     const parsed = JSON.parse(sharedBackup);
     state.threads = parsed.threads || seedThreads;
+    state.threadReports = parsed.threadReports || [];
+    state.threadSubscriptions = parsed.threadSubscriptions || {};
+    state.readThreads = parsed.readThreads || {};
     state.members = parsed.members || {};
     state.chats = parsed.chats || {};
     state.memberTemplates = parsed.memberTemplates || {};
@@ -447,6 +456,9 @@ function saveState() {
     "galactic-forum-shared-backup",
     JSON.stringify({
       threads: state.threads,
+      threadReports: state.threadReports,
+      threadSubscriptions: state.threadSubscriptions,
+      readThreads: state.readThreads,
       members: state.members,
       chats: state.chats,
       memberTemplates: state.memberTemplates,
@@ -471,6 +483,9 @@ function saveState() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       threads: state.threads,
+      threadReports: state.threadReports,
+      threadSubscriptions: state.threadSubscriptions,
+      readThreads: state.readThreads,
       members: state.members,
       chats: state.chats,
       memberTemplates: state.memberTemplates,
@@ -773,6 +788,7 @@ function setPermission(unitId, callsign, key, value) {
 function getFilteredThreads() {
   const query = state.query.trim().toLowerCase();
   return state.threads
+    .map(normalizeThread)
     .filter((thread) => thread.unit === state.activeUnit)
     .filter((thread) => state.category === "Alle" || thread.category === state.category)
     .filter((thread) => {
@@ -786,6 +802,8 @@ function getFilteredThreads() {
         thread.title,
         thread.body,
         thread.category,
+        thread.locked ? "geschlossen locked" : "",
+        thread.pinned ? "wichtig pinned" : "",
         thread.unit,
         thread.author,
         thread.tags.join(" "),
@@ -795,7 +813,30 @@ function getFilteredThreads() {
         .toLowerCase();
       return haystack.includes(query);
     })
-    .sort((a, b) => b.createdAt - a.createdAt);
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.createdAt - a.createdAt);
+}
+
+function normalizeThread(thread) {
+  return {
+    reactions: { Signal: thread.likes || 0, Bestaetigt: 0, Frage: 0, ...(thread.reactions || {}) },
+    subscribers: Array.isArray(thread.subscribers) ? thread.subscribers : [],
+    reports: Array.isArray(thread.reports) ? thread.reports : [],
+    pinned: Boolean(thread.pinned),
+    locked: Boolean(thread.locked),
+    editedAt: thread.editedAt || null,
+    ...thread
+  };
+}
+
+function canModerateThread(thread) {
+  return isOwner() || state.account?.role === "admin" || thread.author === state.user.name;
+}
+
+function notifyThreadSubscribers(thread, body) {
+  (thread.subscribers || []).filter((name) => name !== state.user.name).forEach((name) => {
+    state.notifications.unshift({ id: crypto.randomUUID(), title: `Thread: ${thread.title}`, body, unit: thread.unit, target: name, createdAt: Date.now(), read: false });
+  });
+  state.notifications = state.notifications.slice(0, 80);
 }
 
 function renderUnitTabs() {
@@ -943,15 +984,16 @@ function renderThreads() {
   els.threadList.innerHTML = threads
     .map(
       (thread) => `
-        <article class="thread-card" data-thread-id="${thread.id}">
+        <article class="thread-card ${thread.pinned ? "pinned" : ""} ${thread.locked ? "locked" : ""} ${state.readThreads[thread.id] ? "" : "unread"}" data-thread-id="${thread.id}">
           <header>
             <div>
-              <h3>${escapeHtml(thread.title)}</h3>
+              <h3>${thread.pinned ? "[PIN] " : ""}${thread.locked ? "[ZU] " : ""}${escapeHtml(thread.title)}</h3>
               <div class="meta-row">
                 <span>${escapeHtml(thread.unit)}</span>
                 <span>${escapeHtml(thread.category)}</span>
                 <span>${escapeHtml(thread.author)}</span>
                 <span>${formatTime(thread.createdAt)}</span>
+                ${thread.editedAt ? `<span>bearbeitet ${formatTime(thread.editedAt)}</span>` : ""}
               </div>
             </div>
             <button class="ghost-icon-button save-button" data-action="save" aria-label="Merken">${thread.saved ? "+" : "-"}</button>
@@ -961,9 +1003,14 @@ function renderThreads() {
             ${thread.tags.map((tag) => `<span class="tag">#${escapeHtml(tag)}</span>`).join("")}
           </div>
           <div class="action-row">
-            <button class="chip-button ${thread.liked ? "liked" : ""}" data-action="like">Signal ${thread.likes}</button>
+            <button class="chip-button ${thread.liked ? "liked" : ""}" data-action="like">Signal ${thread.reactions.Signal || 0}</button>
+            <button class="chip-button" data-action="react-confirm">Bestaetigt ${thread.reactions.Bestaetigt || 0}</button>
+            <button class="chip-button" data-action="react-question">Frage ${thread.reactions.Frage || 0}</button>
             <button class="chip-button" data-action="open">Antworten ${thread.replies.length}</button>
-            ${isOwner() ? `<button class="chip-button danger" data-action="delete">Loeschen</button>` : ""}
+            <button class="chip-button" data-action="subscribe">${thread.subscribers.includes(state.user.name) ? "Abo aus" : "Abo"}</button>
+            <button class="chip-button danger" data-action="report">Melden</button>
+            ${canModerateThread(thread) ? `<button class="chip-button" data-action="edit">Bearbeiten</button>` : ""}
+            ${isOwner() || state.account?.role === "admin" ? `<button class="chip-button" data-action="pin">${thread.pinned ? "Entpinnen" : "Pinnen"}</button><button class="chip-button" data-action="lock">${thread.locked ? "Oeffnen" : "Schliessen"}</button><button class="chip-button danger" data-action="delete">Loeschen</button>` : ""}
           </div>
         </article>
       `
@@ -1580,6 +1627,15 @@ function renderAdminPanel() {
         : `<div class="empty-state">Noch keine Audit-Eintraege.</div>`}
     </section>
     <section class="audit-panel">
+      <strong>Moderation</strong>
+      ${state.threadReports.length
+        ? state.threadReports
+            .slice(0, 80)
+            .map((report) => `<div class="audit-entry" data-report-id="${report.id}"><span>${formatTime(report.createdAt)} - ${escapeHtml(report.unit)}</span><strong>${escapeHtml(report.title)} (${escapeHtml(report.status)})</strong><p>${escapeHtml(report.author)}: ${escapeHtml(report.reason)}</p>${report.status === "offen" ? `<div class="action-row"><button class="chip-button" data-report-status="erledigt" type="button">Erledigt</button><button class="chip-button danger" data-report-status="abgelehnt" type="button">Ablehnen</button></div>` : ""}</div>`)
+            .join("")
+        : `<div class="empty-state">Keine Meldungen.</div>`}
+    </section>
+    <section class="audit-panel">
       <strong>Akten-Audit</strong>
       ${state.memberAudit.length
         ? state.memberAudit
@@ -1615,12 +1671,14 @@ function applyAdminSubView() {
   auditPanels.forEach((panel, index) => {
     if (index === 0) panel.hidden = state.adminSubView !== "audit";
     if (index === 1) panel.hidden = state.adminSubView !== "audit";
-    if (index === 2) panel.hidden = state.adminSubView !== "befoerderungen";
+    if (index === 2) panel.hidden = state.adminSubView !== "audit";
+    if (index === 3) panel.hidden = state.adminSubView !== "befoerderungen";
   });
 }
 
 function renderDetail() {
-  const thread = state.threads.find((item) => item.id === state.selectedThreadId);
+  const rawThread = state.threads.find((item) => item.id === state.selectedThreadId);
+  const thread = rawThread ? normalizeThread(rawThread) : null;
   if (!thread) return;
 
   els.detailTitle.textContent = thread.title;
@@ -1629,7 +1687,9 @@ function renderDetail() {
     <span>${escapeHtml(thread.category)}</span>
     <span>${escapeHtml(thread.author)}</span>
     <span>${formatTime(thread.createdAt)}</span>
-    <span>Signal ${thread.likes}</span>
+    <span>Signal ${thread.reactions.Signal || 0}</span>
+    ${thread.locked ? "<span>geschlossen</span>" : ""}
+    ${thread.editedAt ? `<span>bearbeitet ${formatTime(thread.editedAt)}</span>` : ""}
   `;
   els.detailBody.textContent = thread.body;
   els.saveThreadButton.textContent = thread.saved ? "+" : "-";
@@ -1637,14 +1697,16 @@ function renderDetail() {
     ? thread.replies
         .map(
           (reply) => `
-            <div class="reply">
+            <div class="reply" data-reply-id="${reply.id}">
               <strong>${escapeHtml(reply.author)} - ${formatTime(reply.createdAt)}</strong>
               <p>${escapeHtml(reply.body)}</p>
+              <div class="action-row"><button class="chip-button compact" data-reply-quote="${reply.id}" type="button">Zitieren</button>${reply.author === state.user.name || isOwner() ? `<button class="chip-button compact" data-reply-edit="${reply.id}" type="button">Bearbeiten</button>` : ""}</div>
             </div>
           `
         )
         .join("")
     : `<div class="empty-state">Noch keine Antworten im Sektor.</div>`;
+  els.replyForm.hidden = thread.locked && !(isOwner() || state.account?.role === "admin");
 }
 
 function renderAll() {
@@ -1674,6 +1736,8 @@ function escapeHtml(value) {
 
 function openThread(threadId) {
   state.selectedThreadId = threadId;
+  state.readThreads[threadId] = Date.now();
+  saveState();
   renderDetail();
   els.detailDialog.showModal();
 }
@@ -2377,6 +2441,23 @@ function bindEvents() {
       return;
     }
 
+    const reportButton = event.target.closest("[data-report-status]");
+    if (reportButton) {
+      const item = event.target.closest("[data-report-id]");
+      state.threadReports = state.threadReports.map((report) =>
+        report.id === item.dataset.reportId ? { ...report, status: reportButton.dataset.reportStatus, reviewedBy: state.user.name, reviewedAt: Date.now() } : report
+      );
+      state.threads = state.threads.map((thread) => ({
+        ...thread,
+        reports: (thread.reports || []).map((report) =>
+          report.id === item.dataset.reportId ? { ...report, status: reportButton.dataset.reportStatus } : report
+        )
+      }));
+      saveState();
+      renderAdminPanel();
+      return;
+    }
+
     const saveButton = event.target.closest("[data-admin-save]");
     const passwordButton = event.target.closest("[data-password-save]");
     const accountStatusButton = event.target.closest("[data-account-status]");
@@ -2505,8 +2586,20 @@ function bindEvents() {
 
     if (action === "like") {
       updateThread(threadId, (thread) => {
+        thread = normalizeThread(thread);
         thread.liked = !thread.liked;
         thread.likes += thread.liked ? 1 : -1;
+        thread.reactions.Signal = Math.max(0, (thread.reactions.Signal || 0) + (thread.liked ? 1 : -1));
+        return thread;
+      });
+      return;
+    }
+
+    if (action === "react-confirm" || action === "react-question") {
+      const key = action === "react-confirm" ? "Bestaetigt" : "Frage";
+      updateThread(threadId, (thread) => {
+        thread = normalizeThread(thread);
+        thread.reactions[key] = (thread.reactions[key] || 0) + 1;
         return thread;
       });
       return;
@@ -2523,6 +2616,45 @@ function bindEvents() {
     if (action === "delete") {
       if (!isOwner()) return;
       deleteThread(threadId);
+      return;
+    }
+
+    if (action === "subscribe") {
+      updateThread(threadId, (thread) => {
+        thread = normalizeThread(thread);
+        thread.subscribers = thread.subscribers.includes(state.user.name)
+          ? thread.subscribers.filter((name) => name !== state.user.name)
+          : [...thread.subscribers, state.user.name];
+        return thread;
+      });
+      return;
+    }
+
+    if (action === "report") {
+      const reason = prompt("Warum meldest du diesen Thread?");
+      if (!reason) return;
+      updateThread(threadId, (thread) => {
+        thread = normalizeThread(thread);
+        const report = { id: crypto.randomUUID(), reason, author: state.user.name, createdAt: Date.now(), status: "offen" };
+        thread.reports.push(report);
+        state.threadReports.unshift({ ...report, threadId, title: thread.title, unit: thread.unit });
+        return thread;
+      });
+      return;
+    }
+
+    if (action === "edit") {
+      const thread = state.threads.find((item) => item.id === threadId);
+      if (!thread || !canModerateThread(thread)) return;
+      const body = prompt("Thread bearbeiten", thread.body);
+      if (!body) return;
+      updateThread(threadId, (item) => ({ ...item, body: body.trim(), editedAt: Date.now(), editedBy: state.user.name }));
+      return;
+    }
+
+    if (action === "pin" || action === "lock") {
+      if (!(isOwner() || state.account?.role === "admin")) return;
+      updateThread(threadId, (thread) => ({ ...thread, [action === "pin" ? "pinned" : "locked"]: !thread[action === "pin" ? "pinned" : "locked"] }));
       return;
     }
 
@@ -2577,6 +2709,11 @@ function bindEvents() {
       likes: 0,
       liked: false,
       saved: false,
+      pinned: false,
+      locked: false,
+      reactions: { Signal: 0, Bestaetigt: 0, Frage: 0 },
+      subscribers: [state.user.name],
+      reports: [],
       replies: []
     });
 
@@ -2602,15 +2739,40 @@ function bindEvents() {
     event.preventDefault();
     if (!state.selectedThreadId) return;
     updateThread(state.selectedThreadId, (thread) => {
+      thread = normalizeThread(thread);
+      if (thread.locked && !(isOwner() || state.account?.role === "admin")) return thread;
       thread.replies.push({
         id: crypto.randomUUID(),
         author: state.user.name,
         body: els.replyBody.value.trim(),
         createdAt: Date.now()
       });
+      notifyThreadSubscribers(thread, `${state.user.name} hat geantwortet.`);
       return thread;
     });
     els.replyForm.reset();
+  });
+
+  els.replyStack.addEventListener("click", (event) => {
+    const quoteButton = event.target.closest("[data-reply-quote]");
+    const editButton = event.target.closest("[data-reply-edit]");
+    if (!quoteButton && !editButton) return;
+    const thread = state.threads.find((item) => item.id === state.selectedThreadId);
+    const replyId = (quoteButton || editButton).dataset.replyQuote || (quoteButton || editButton).dataset.replyEdit;
+    const reply = thread?.replies.find((item) => item.id === replyId);
+    if (!thread || !reply) return;
+    if (quoteButton) {
+      els.replyBody.value = `> ${reply.author}: ${reply.body}\n\n`;
+      els.replyBody.focus();
+      return;
+    }
+    if (reply.author !== state.user.name && !isOwner()) return;
+    const body = prompt("Antwort bearbeiten", reply.body);
+    if (!body) return;
+    updateThread(thread.id, (item) => ({
+      ...item,
+      replies: item.replies.map((entry) => (entry.id === reply.id ? { ...entry, body: body.trim(), editedAt: Date.now(), editedBy: state.user.name } : entry))
+    }));
   });
 
   els.profileButton.addEventListener("click", () => {
@@ -2690,7 +2852,7 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=32").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=33").catch(() => {});
   }
 
   setInterval(async () => {
