@@ -1,6 +1,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { DatabaseSync } = require("node:sqlite");
 
 const root = __dirname;
@@ -27,6 +28,23 @@ db.exec(`
     id INTEGER PRIMARY KEY CHECK (id = 1),
     data TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_salt TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 `);
 
@@ -57,6 +75,61 @@ function readJsonBody(request) {
     });
     request.on("error", reject);
   });
+}
+
+function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
+  const hash = crypto.pbkdf2Sync(password, salt, 210000, 32, "sha256").toString("hex");
+  return { salt, hash };
+}
+
+function verifyPassword(password, salt, expectedHash) {
+  const { hash } = hashPassword(password, salt);
+  return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(expectedHash, "hex"));
+}
+
+function sanitizeUser(user) {
+  if (!user) return null;
+  return { id: user.id, username: user.username, role: user.role };
+}
+
+function getAuthUser(request) {
+  const header = request.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (!token) return null;
+
+  const row = db
+    .prepare(
+      `
+        SELECT users.id, users.username, users.role
+        FROM sessions
+        JOIN users ON users.id = sessions.user_id
+        WHERE sessions.token = ? AND sessions.expires_at > CURRENT_TIMESTAMP
+      `
+    )
+    .get(token);
+
+  return row || null;
+}
+
+function requireAuth(request, response) {
+  const user = getAuthUser(request);
+  if (!user) {
+    sendJson(response, 401, { ok: false, error: "Login erforderlich" });
+    return null;
+  }
+  return user;
+}
+
+function createSession(userId) {
+  const token = crypto.randomBytes(32).toString("hex");
+  db.prepare(
+    "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, datetime('now', '+14 days'))"
+  ).run(token, userId);
+  return token;
+}
+
+function hasUsers() {
+  return db.prepare("SELECT COUNT(*) AS count FROM users").get().count > 0;
 }
 
 function getState() {
@@ -91,12 +164,75 @@ async function handleApi(request, response, pathname) {
     return true;
   }
 
+  if (pathname === "/api/auth/status" && request.method === "GET") {
+    sendJson(response, 200, {
+      ok: true,
+      hasUsers: hasUsers(),
+      user: sanitizeUser(getAuthUser(request))
+    });
+    return true;
+  }
+
+  if (pathname === "/api/auth/setup" && request.method === "POST") {
+    if (hasUsers()) {
+      sendJson(response, 409, { ok: false, error: "Setup wurde bereits abgeschlossen" });
+      return true;
+    }
+
+    try {
+      const payload = await readJsonBody(request);
+      const username = String(payload.username || "").trim();
+      const password = String(payload.password || "");
+      if (username.length < 3 || password.length < 6) {
+        sendJson(response, 400, { ok: false, error: "Benutzername min. 3 Zeichen, Passwort min. 6 Zeichen" });
+        return true;
+      }
+
+      const { salt, hash } = hashPassword(password);
+      const result = db
+        .prepare("INSERT INTO users (username, password_salt, password_hash, role) VALUES (?, ?, ?, 'owner')")
+        .run(username, salt, hash);
+      const user = db.prepare("SELECT id, username, role FROM users WHERE id = ?").get(result.lastInsertRowid);
+      sendJson(response, 200, { ok: true, token: createSession(user.id), user: sanitizeUser(user) });
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (pathname === "/api/auth/login" && request.method === "POST") {
+    try {
+      const payload = await readJsonBody(request);
+      const username = String(payload.username || "").trim();
+      const password = String(payload.password || "");
+      const user = db.prepare("SELECT * FROM users WHERE username = ?").get(username);
+      if (!user || !verifyPassword(password, user.password_salt, user.password_hash)) {
+        sendJson(response, 401, { ok: false, error: "Login abgelehnt" });
+        return true;
+      }
+      sendJson(response, 200, { ok: true, token: createSession(user.id), user: sanitizeUser(user) });
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (pathname === "/api/auth/logout" && request.method === "POST") {
+    const header = request.headers.authorization || "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+    if (token) db.prepare("DELETE FROM sessions WHERE token = ?").run(token);
+    sendJson(response, 200, { ok: true });
+    return true;
+  }
+
   if (pathname === "/api/state" && request.method === "GET") {
+    if (!requireAuth(request, response)) return true;
     sendJson(response, 200, { ok: true, state: getState() });
     return true;
   }
 
   if (pathname === "/api/state" && request.method === "PUT") {
+    if (!requireAuth(request, response)) return true;
     try {
       const payload = await readJsonBody(request);
       sendJson(response, 200, { ok: true, state: saveState(payload) });

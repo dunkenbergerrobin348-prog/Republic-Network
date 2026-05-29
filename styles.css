@@ -421,6 +421,10 @@ select:focus {
   font-size: 0.78rem;
 }
 
+.full-width {
+  width: 100%;
+}
+
 .bottom-nav {
   position: fixed;
   left: 50%;

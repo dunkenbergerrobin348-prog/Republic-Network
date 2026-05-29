@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#050816" />
     <title>Galactic Forum</title>
-    <link rel="manifest" href="manifest.webmanifest?v=13" />
-    <link rel="stylesheet" href="styles.css?v=13" />
+    <link rel="manifest" href="manifest.webmanifest?v=14" />
+    <link rel="stylesheet" href="styles.css?v=14" />
   </head>
   <body>
     <div class="app-shell">
@@ -127,6 +127,7 @@
           <input id="profileBio" maxlength="64" placeholder="z.B. Pilot, Moderator, Techniker" />
         </label>
         <button class="primary-button" type="submit">Speichern</button>
+        <button class="chip-button danger full-width" id="logoutButton" type="button">Ausloggen</button>
       </form>
     </dialog>
 
@@ -172,6 +173,25 @@
       </form>
     </dialog>
 
+    <dialog id="authDialog" class="auth-dialog">
+      <form method="dialog" class="dialog-card" id="authForm">
+        <header>
+          <h2 id="authTitle">Login</h2>
+        </header>
+        <p class="security-copy" id="authCopy">Melde dich an, um auf das Republic Network zuzugreifen.</p>
+        <label>
+          Benutzername
+          <input id="authUsername" required minlength="3" maxlength="32" autocomplete="username" />
+        </label>
+        <label>
+          Passwort
+          <input id="authPassword" required minlength="6" maxlength="128" type="password" autocomplete="current-password" />
+        </label>
+        <p class="access-error" id="authError"></p>
+        <button class="primary-button" id="authSubmit" type="submit">Einloggen</button>
+      </form>
+    </dialog>
+
     <script>
       if ("caches" in window) {
         caches.keys().then((keys) => keys.forEach((key) => {
@@ -179,6 +199,6 @@
         }));
       }
     </script>
-    <script src="app.js?v=13"></script>
+    <script src="app.js?v=14"></script>
   </body>
 </html>

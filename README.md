@@ -31,6 +31,7 @@ Siehe [DEPLOYMENT.md](DEPLOYMENT.md).
 - Mitgliederakten mit Fortbildungen und Rangverwaltung
 - Owner- und Rechteverwaltung pro Einheit
 - Einheitschat pro Einheit
+- Login-System mit erstem Owner-Setup
 - PWA-Manifest und Service Worker fuer App-Installation
 
 ## Hinweis

@@ -113,6 +113,10 @@ icon.svg
 _headers
 ```
 
+## Erster Start
+
+Beim ersten Oeffnen nach dem Deploy erscheint ein Setup-Login. Dort erstellst du den ersten Owner-Account. Danach muessen sich Nutzer vor der App anmelden.
+
 ## Wichtige Einschraenkung
 
-Das Backend speichert gemeinsame Daten in SQLite. Die Registerpruefung ist aber weiterhin eine einfache RP-/Admin-Pruefung und noch kein vollstaendiges Passwort-Login-System. Fuer eine oeffentliche Community waere der naechste Schritt echte Accounts mit Passwort-Hashing und Rollen auf dem Server.
+Das Backend speichert gemeinsame Daten in SQLite und Accounts mit Passwort-Hashing. Die Einheits-Registerpruefung bleibt zusaetzlich ein RP-System innerhalb der App.

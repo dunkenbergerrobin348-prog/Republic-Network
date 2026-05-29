@@ -126,7 +126,11 @@ const state = {
 };
 
 const storageKey = "galactic-forum-local-session-v1";
+const authTokenKey = "galactic-forum-auth-token";
 let backendAvailable = false;
+let authToken = localStorage.getItem(authTokenKey) || "";
+let authMode = "login";
+let eventsBound = false;
 
 const els = {
   unitTabs: document.querySelector("#unitTabs"),
@@ -155,6 +159,7 @@ const els = {
   profileForm: document.querySelector("#profileForm"),
   displayName: document.querySelector("#displayName"),
   profileBio: document.querySelector("#profileBio"),
+  logoutButton: document.querySelector("#logoutButton"),
   profileInitial: document.querySelector("#profileInitial"),
   threadCount: document.querySelector("#threadCount"),
   replyCount: document.querySelector("#replyCount"),
@@ -173,8 +178,93 @@ const els = {
   accessCopy: document.querySelector("#accessCopy"),
   accessCallsign: document.querySelector("#accessCallsign"),
   accessCode: document.querySelector("#accessCode"),
-  accessError: document.querySelector("#accessError")
+  accessError: document.querySelector("#accessError"),
+  authDialog: document.querySelector("#authDialog"),
+  authForm: document.querySelector("#authForm"),
+  authTitle: document.querySelector("#authTitle"),
+  authCopy: document.querySelector("#authCopy"),
+  authUsername: document.querySelector("#authUsername"),
+  authPassword: document.querySelector("#authPassword"),
+  authError: document.querySelector("#authError"),
+  authSubmit: document.querySelector("#authSubmit")
 };
+
+function authHeaders() {
+  return authToken ? { authorization: `Bearer ${authToken}` } : {};
+}
+
+async function apiFetch(url, options = {}) {
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      ...authHeaders()
+    }
+  });
+}
+
+async function requireLogin() {
+  try {
+    const response = await apiFetch("./api/auth/status", { cache: "no-store" });
+    const payload = await response.json();
+    backendAvailable = true;
+    if (payload.user) {
+      state.user.name = payload.user.username;
+      state.user.bio = payload.user.role === "owner" ? "Account Owner" : "Mitglied";
+      return true;
+    }
+
+    authMode = payload.hasUsers ? "login" : "setup";
+    showAuthDialog();
+    return false;
+  } catch {
+    backendAvailable = false;
+    authMode = "offline";
+    showAuthDialog("Backend nicht erreichbar. Starte die App mit npm start oder nutze die Render-URL.");
+    return false;
+  }
+}
+
+function showAuthDialog(message = "") {
+  els.authTitle.textContent = authMode === "setup" ? "Owner-Account erstellen" : "Login";
+  els.authCopy.textContent =
+    message ||
+    (authMode === "setup"
+      ? "Erstelle den ersten Account. Dieser Account ist der Server-Owner."
+      : "Melde dich an, um auf das Republic Network zuzugreifen.");
+  els.authSubmit.textContent = authMode === "setup" ? "Owner erstellen" : "Einloggen";
+  els.authError.textContent = "";
+  els.authPassword.value = "";
+  if (!els.authDialog.open) els.authDialog.showModal();
+}
+
+async function submitAuth() {
+  if (authMode === "offline") return;
+  const username = els.authUsername.value.trim();
+  const password = els.authPassword.value;
+  const endpoint = authMode === "setup" ? "./api/auth/setup" : "./api/auth/login";
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username, password })
+  });
+  const payload = await response.json();
+  if (!response.ok || !payload.ok) {
+    els.authError.textContent = payload.error || "Login fehlgeschlagen";
+    return false;
+  }
+
+  authToken = payload.token;
+  localStorage.setItem(authTokenKey, authToken);
+  state.user.name = payload.user.username;
+  state.user.bio = payload.user.role === "owner" ? "Account Owner" : "Mitglied";
+  els.authDialog.close();
+  await loadState();
+  renderThreadFormOptions();
+  renderAll();
+  return true;
+}
 
 async function loadState() {
   const saved = localStorage.getItem(storageKey);
@@ -185,7 +275,7 @@ async function loadState() {
   }
 
   try {
-    const response = await fetch("./api/state", { cache: "no-store" });
+    const response = await apiFetch("./api/state", { cache: "no-store" });
     if (response.ok) {
       const payload = await response.json();
       const shared = payload.state;
@@ -238,7 +328,7 @@ function saveState() {
 
   if (!backendAvailable) return;
 
-  fetch("./api/state", {
+  apiFetch("./api/state", {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -706,6 +796,14 @@ function changeMemberRank(memberId, direction) {
 }
 
 function bindEvents() {
+  if (eventsBound) return;
+  eventsBound = true;
+
+  els.authForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitAuth();
+  });
+
   els.unitTabs.addEventListener("click", (event) => {
     const button = event.target.closest(".unit-tab");
     if (!button) return;
@@ -989,6 +1087,14 @@ function bindEvents() {
     els.profileDialog.close();
   });
 
+  els.logoutButton.addEventListener("click", async () => {
+    await apiFetch("./api/auth/logout", { method: "POST" }).catch(() => {});
+    authToken = "";
+    localStorage.removeItem(authTokenKey);
+    els.profileDialog.close();
+    showAuthDialog("Du wurdest ausgeloggt.");
+  });
+
   els.navItems.forEach((button) => {
     button.addEventListener("click", () => {
       state.view = button.dataset.view;
@@ -1005,13 +1111,14 @@ function renderNav() {
 }
 
 async function boot() {
+  bindEvents();
+  if (!(await requireLogin())) return;
   await loadState();
   renderThreadFormOptions();
   renderAll();
-  bindEvents();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=13").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=14").catch(() => {});
   }
 }
 
