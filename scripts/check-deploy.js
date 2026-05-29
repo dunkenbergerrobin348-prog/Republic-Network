@@ -25,12 +25,12 @@ const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const worker = fs.readFileSync(path.join(root, "service-worker.js"), "utf8");
 const manifest = fs.readFileSync(path.join(root, "manifest.webmanifest"), "utf8");
 
-for (const needle of ["styles.css?v=31", "app.js?v=31", "manifest.webmanifest?v=31", "assets/intro.mp4?v=26"]) {
+for (const needle of ["styles.css?v=32", "app.js?v=32", "manifest.webmanifest?v=32", "assets/intro.mp4?v=26"]) {
   if (!html.includes(needle)) throw new Error(`index.html referenziert ${needle} nicht.`);
 }
 
-if (!worker.includes("galactic-forum-v31")) {
-  throw new Error("Service Worker Cache-Version ist nicht v31.");
+if (!worker.includes("galactic-forum-v32")) {
+  throw new Error("Service Worker Cache-Version ist nicht v32.");
 }
 
 JSON.parse(manifest);

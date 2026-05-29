@@ -1496,7 +1496,21 @@ function renderAdminPanel() {
       ${state.applications.length
         ? state.applications
             .slice(0, 80)
-            .map((application) => `<div class="audit-entry"><span>${formatTime(application.createdAt)} - ${escapeHtml(application.unit)}</span><strong>${escapeHtml(application.author)} (${escapeHtml(application.status)})</strong><p>${escapeHtml(application.motivation)}</p></div>`)
+            .map((application) => `
+              <div class="audit-entry application-item" data-application-id="${application.id}">
+                <span>${formatTime(application.createdAt)} - ${escapeHtml(application.unit)}</span>
+                <strong>${escapeHtml(application.author)} (${escapeHtml(application.status)})</strong>
+                <p>${escapeHtml(application.motivation)}</p>
+                ${application.comments?.length ? `<div class="application-comments">${application.comments.map((comment) => `<span>${escapeHtml(comment.author)}: ${escapeHtml(comment.body)}</span>`).join("")}</div>` : ""}
+                <div class="application-review">
+                  <select data-application-next>
+                    ${["offen", "in pruefung", "angenommen", "abgelehnt"].map((status) => `<option value="${status}" ${application.status === status ? "selected" : ""}>${status}</option>`).join("")}
+                  </select>
+                  <input data-application-comment maxlength="160" placeholder="Kommentar / Rueckfrage" />
+                  <button class="chip-button" data-admin-application-save type="button">Bewerbung speichern</button>
+                </div>
+              </div>
+            `)
             .join("")
         : `<div class="empty-state">Keine Bewerbungen vorhanden.</div>`}
     </section>
@@ -1536,6 +1550,16 @@ function renderAdminPanel() {
                     `
                   )
                   .join("")}
+              </div>
+              <div class="action-row">
+                <button class="chip-button" data-account-status="approved" type="button">Annehmen</button>
+                <button class="chip-button" data-account-status="pending" type="button">Warten</button>
+                <button class="chip-button danger" data-account-status="blocked" type="button">Blockieren</button>
+              </div>
+              <div class="action-row">
+                <button class="chip-button" data-account-role="user" type="button">User</button>
+                <button class="chip-button" data-account-role="admin" type="button">Admin</button>
+                <button class="chip-button danger" data-account-role="owner" type="button">Owner</button>
               </div>
               <label class="password-reset">Neues Passwort
                 <input data-password-reset type="password" minlength="6" placeholder="Optional" />
@@ -2300,6 +2324,27 @@ function bindEvents() {
       return;
     }
 
+    const applicationSaveButton = event.target.closest("[data-admin-application-save]");
+    if (applicationSaveButton) {
+      const item = event.target.closest(".application-item");
+      const status = item.querySelector("[data-application-next]").value;
+      const comment = item.querySelector("[data-application-comment]").value.trim();
+      state.applications = state.applications.map((application) => {
+        if (application.id !== item.dataset.applicationId) return application;
+        return {
+          ...application,
+          status,
+          reviewedBy: state.user.name,
+          reviewedAt: Date.now(),
+          comments: comment ? [...(application.comments || []), { id: crypto.randomUUID(), author: state.user.name, body: comment, createdAt: Date.now() }] : application.comments || []
+        };
+      });
+      addNotification("Bewerbung aktualisiert", `Eine Bewerbung ist jetzt ${status}.`, "Holonet");
+      saveState();
+      renderAdminPanel();
+      return;
+    }
+
     const promotionButton = event.target.closest("[data-promotion-decision]");
     if (promotionButton) {
       const item = event.target.closest("[data-promotion-id]");
@@ -2334,7 +2379,9 @@ function bindEvents() {
 
     const saveButton = event.target.closest("[data-admin-save]");
     const passwordButton = event.target.closest("[data-password-save]");
-    if (!saveButton && !passwordButton) return;
+    const accountStatusButton = event.target.closest("[data-account-status]");
+    const accountRoleButton = event.target.closest("[data-account-role]");
+    if (!saveButton && !passwordButton && !accountStatusButton && !accountRoleButton) return;
     const card = event.target.closest(".admin-card");
     const id = card.dataset.userId;
 
@@ -2354,6 +2401,8 @@ function bindEvents() {
       return;
     }
 
+    if (accountStatusButton) card.querySelector('[data-admin-field="status"]').value = accountStatusButton.dataset.accountStatus;
+    if (accountRoleButton) card.querySelector('[data-admin-field="role"]').value = accountRoleButton.dataset.accountRole;
     const status = card.querySelector('[data-admin-field="status"]').value;
     const role = card.querySelector('[data-admin-field="role"]').value;
     const unitAccess = [...card.querySelectorAll("[data-admin-unit]:checked")].map((input) => input.dataset.adminUnit);
@@ -2641,7 +2690,7 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=31").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=32").catch(() => {});
   }
 
   setInterval(async () => {
