@@ -1091,23 +1091,40 @@ dialog::backdrop {
   font-weight: 900;
 }
 
-.members-panel[data-subview="board"] .member-card {
+.members-panel[data-subview="board"] .member-card,
+.members-panel[data-subview="akten"] .member-card {
   padding: 10px;
 }
 
 .members-panel[data-subview="board"] .member-card.dossier::after,
 .members-panel[data-subview="board"] .record-fields,
 .members-panel[data-subview="board"] .rank-history,
-.members-panel[data-subview="board"] .inline-add-form {
+.members-panel[data-subview="board"] .inline-add-form,
+.members-panel[data-subview="akten"] .member-card.dossier::after,
+.members-panel[data-subview="akten"] .record-fields,
+.members-panel[data-subview="akten"] .rank-history {
   display: none;
 }
 
-.members-panel[data-subview="board"] .training-list {
+.members-panel[data-subview="board"] .training-list,
+.members-panel[data-subview="akten"] .training-list {
   margin-top: 8px;
 }
 
-.members-panel[data-subview="board"] .training-item:nth-child(n+4) {
+.members-panel[data-subview="board"] .training-item:nth-child(n+4),
+.members-panel[data-subview="akten"] .training-item:nth-child(n+6) {
   display: none;
+}
+
+.members-panel[data-subview="akten"] .member-board {
+  display: grid;
+  grid-auto-flow: row;
+  grid-auto-columns: auto;
+  overflow: visible;
+}
+
+.members-panel[data-subview="akten"] .member-column {
+  min-height: 0;
 }
 
 .members-panel[data-subview="missionen"] #activityForm,

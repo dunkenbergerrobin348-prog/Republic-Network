@@ -998,6 +998,7 @@ function renderMembersPanel() {
   const rights = getUserPermissions();
   const permissionMap = state.permissions[state.activeUnit] || {};
   const memberTabs = [["board", "Board"], ["akten", "Akten"], ["vorlagen", "Vorlagen"], ["missionen", "Missionen"], ["aktivitaet", "Aktivitaet"], ["rechte", "Rechte"]];
+  const visibleColumns = state.memberSubView === "akten" ? [{ id: "all", title: "Akten" }] : memberBoardColumns;
 
   els.membersPanel.innerHTML = `
     <div class="members-header">
@@ -1164,9 +1165,9 @@ function renderMembersPanel() {
     ${
       members.length
         ? `<div class="member-board">
-            ${memberBoardColumns
+            ${visibleColumns
               .map((column) => {
-                const columnMembers = members.filter((member) => member.status === column.id);
+                const columnMembers = column.id === "all" ? members : members.filter((member) => member.status === column.id);
                 return `
                   <section class="member-column">
                     <header><strong>${column.title}</strong><span>${columnMembers.length}</span></header>
@@ -2640,7 +2641,7 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=30").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=31").catch(() => {});
   }
 
   setInterval(async () => {
