@@ -32,6 +32,7 @@ Siehe [DEPLOYMENT.md](DEPLOYMENT.md).
 - Owner- und Rechteverwaltung pro Einheit
 - Einheitschat pro Einheit
 - Login-System mit erstem Owner-Setup
+- Discord-Login per OAuth2 (`identify`, `email`)
 - Account-Freischaltung und Einheitszuweisung durch Owner
 - Admin-Dashboard fuer Nutzerstatus, Rollen und Einheiten
 - Rollen `user`, `admin`, `owner`

@@ -46,6 +46,24 @@ npm start
 
 7. Einen persistenten Disk/Mount fuer den Ordner `data` anlegen, wenn die Daten nach Deploys erhalten bleiben sollen.
 
+## Environment Variablen
+
+Setze fuer den Owner-Schutz mindestens:
+
+```text
+OWNER_SETUP_CODE=dein-geheimer-owner-code
+```
+
+Fuer Discord-Login brauchst du in der Discord Developer Console eine OAuth2-App und bei Render diese Variablen:
+
+```text
+DISCORD_CLIENT_ID=deine-client-id
+DISCORD_CLIENT_SECRET=dein-client-secret
+DISCORD_REDIRECT_URI=https://deine-render-url.onrender.com/api/auth/discord/callback
+```
+
+Die gleiche Redirect-URL muss in Discord unter OAuth2 Redirects eingetragen sein.
+
 ## Railway Beispiel
 
 1. Projekt in ein GitHub-Repository hochladen.

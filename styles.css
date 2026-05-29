@@ -692,6 +692,19 @@ dialog::backdrop {
   text-transform: uppercase;
 }
 
+.discord-login-button {
+  display: grid;
+  min-height: 44px;
+  place-items: center;
+  margin: 10px 0;
+  border: 1px solid rgba(88, 101, 242, 0.55);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(88, 101, 242, 0.95), rgba(65, 75, 190, 0.95));
+  color: #fff;
+  font-weight: 900;
+  text-decoration: none;
+}
+
 .detail-card {
   max-height: 92vh;
   overflow: auto;

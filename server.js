@@ -10,6 +10,9 @@ const dbPath = path.join(dataDir, "galactic-forum.sqlite");
 const port = Number(process.env.PORT || 4173);
 const maxBodyBytes = 2_000_000;
 const ownerSetupCode = String(process.env.OWNER_SETUP_CODE || "").trim();
+const discordClientId = String(process.env.DISCORD_CLIENT_ID || "").trim();
+const discordClientSecret = String(process.env.DISCORD_CLIENT_SECRET || "").trim();
+const discordRedirectUri = String(process.env.DISCORD_REDIRECT_URI || "").trim();
 
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -39,6 +42,9 @@ db.exec(`
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'member',
     discord_username TEXT NOT NULL DEFAULT '',
+    discord_id TEXT NOT NULL DEFAULT '',
+    discord_avatar TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
     rp_name TEXT NOT NULL DEFAULT '',
     ct_number TEXT NOT NULL DEFAULT '',
     rp_name_2 TEXT NOT NULL DEFAULT '',
@@ -69,6 +75,9 @@ db.exec(`
 
 for (const migration of [
   "ALTER TABLE users ADD COLUMN discord_username TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN discord_id TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN discord_avatar TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''",
   "ALTER TABLE users ADD COLUMN rp_name TEXT NOT NULL DEFAULT ''",
   "ALTER TABLE users ADD COLUMN ct_number TEXT NOT NULL DEFAULT ''",
   "ALTER TABLE users ADD COLUMN rp_name_2 TEXT NOT NULL DEFAULT ''",
@@ -89,6 +98,52 @@ function sendJson(response, status, payload) {
     "content-type": "application/json; charset=utf-8"
   });
   response.end(JSON.stringify(payload));
+}
+
+function sendRedirect(response, location, cookies = []) {
+  response.writeHead(302, {
+    location,
+    "set-cookie": cookies
+  });
+  response.end();
+}
+
+function parseCookies(request) {
+  return Object.fromEntries(
+    String(request.headers.cookie || "")
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const index = part.indexOf("=");
+        return [part.slice(0, index), decodeURIComponent(part.slice(index + 1))];
+      })
+  );
+}
+
+function createOAuthState() {
+  const nonce = crypto.randomBytes(18).toString("hex");
+  const timestamp = Date.now();
+  const signature = crypto.createHmac("sha256", ownerSetupCode || discordClientSecret || "local-dev").update(`${nonce}.${timestamp}`).digest("hex");
+  return `${nonce}.${timestamp}.${signature}`;
+}
+
+function verifyOAuthState(state) {
+  const [nonce, timestamp, signature] = String(state || "").split(".");
+  if (!nonce || !timestamp || !signature) return false;
+  if (Date.now() - Number(timestamp) > 10 * 60 * 1000) return false;
+  const expected = crypto.createHmac("sha256", ownerSetupCode || discordClientSecret || "local-dev").update(`${nonce}.${timestamp}`).digest("hex");
+  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+}
+
+function getPublicBaseUrl(request) {
+  const host = request.headers["x-forwarded-host"] || request.headers.host;
+  const proto = request.headers["x-forwarded-proto"] || "http";
+  return `${proto}://${host}`;
+}
+
+function getDiscordRedirectUri(request) {
+  return discordRedirectUri || `${getPublicBaseUrl(request)}/api/auth/discord/callback`;
 }
 
 function readJsonBody(request) {
@@ -128,7 +183,10 @@ function sanitizeUser(user) {
     id: user.id,
     username: user.username,
     role: user.role,
+    discordId: user.discord_id || "",
     discordUsername: user.discord_username || user.username,
+    discordAvatar: user.discord_avatar || "",
+    email: user.email || "",
     rpName: user.rp_name || user.username,
     ctNumber: user.ct_number || "",
     rpName2: user.rp_name_2 || "",
@@ -146,7 +204,7 @@ function getAuthUser(request) {
   const row = db
     .prepare(
       `
-        SELECT users.id, users.username, users.role, users.discord_username, users.rp_name, users.ct_number, users.rp_name_2, users.rp_name_3, users.account_status, users.unit_access
+        SELECT users.id, users.username, users.role, users.discord_username, users.discord_id, users.discord_avatar, users.email, users.rp_name, users.ct_number, users.rp_name_2, users.rp_name_3, users.account_status, users.unit_access
         FROM sessions
         JOIN users ON users.id = sessions.user_id
         WHERE sessions.token = ? AND sessions.expires_at > CURRENT_TIMESTAMP
@@ -250,8 +308,92 @@ async function handleApi(request, response, pathname) {
       ok: true,
       hasUsers: hasUsers(),
       setupLocked: !hasUsers() && !ownerSetupCode,
+      discordEnabled: Boolean(discordClientId && discordClientSecret),
       user: sanitizeUser(getAuthUser(request))
     });
+    return true;
+  }
+
+  if (pathname === "/api/auth/discord" && request.method === "GET") {
+    if (!discordClientId || !discordClientSecret) {
+      sendRedirect(response, "/index.html?discord_error=not_configured");
+      return true;
+    }
+    const state = createOAuthState();
+    const redirectUri = getDiscordRedirectUri(request);
+    const params = new URLSearchParams({
+      client_id: discordClientId,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: "identify email",
+      state,
+      prompt: "none"
+    });
+    sendRedirect(response, `https://discord.com/oauth2/authorize?${params}`, [
+      `discord_oauth_state=${encodeURIComponent(state)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=600`
+    ]);
+    return true;
+  }
+
+  if (pathname === "/api/auth/discord/callback" && request.method === "GET") {
+    try {
+      const url = new URL(request.url, getPublicBaseUrl(request));
+      const code = url.searchParams.get("code") || "";
+      const returnedState = url.searchParams.get("state") || "";
+      const cookieState = parseCookies(request).discord_oauth_state || "";
+      if (!code || returnedState !== cookieState || !verifyOAuthState(returnedState)) {
+        sendRedirect(response, "/index.html?discord_error=state", ["discord_oauth_state=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"]);
+        return true;
+      }
+
+      const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: discordClientId,
+          client_secret: discordClientSecret,
+          grant_type: "authorization_code",
+          code,
+          redirect_uri: getDiscordRedirectUri(request)
+        })
+      });
+      const tokenPayload = await tokenResponse.json();
+      if (!tokenResponse.ok) throw new Error(tokenPayload.error_description || "Discord Token abgelehnt");
+
+      const userResponse = await fetch("https://discord.com/api/users/@me", {
+        headers: { authorization: `${tokenPayload.token_type} ${tokenPayload.access_token}` }
+      });
+      const discordUser = await userResponse.json();
+      if (!userResponse.ok || !discordUser.id) throw new Error("Discord Profil konnte nicht geladen werden");
+
+      const discordUsername = discordUser.global_name || discordUser.username || `discord-${discordUser.id}`;
+      const avatar = discordUser.avatar ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png` : "";
+      let user = db.prepare("SELECT * FROM users WHERE discord_id = ?").get(discordUser.id);
+
+      if (!user) {
+        const username = `discord:${discordUser.id}`;
+        const { salt, hash } = hashPassword(crypto.randomBytes(24).toString("hex"));
+        const result = db
+          .prepare(
+            `
+              INSERT INTO users (username, password_salt, password_hash, role, discord_username, discord_id, discord_avatar, email, rp_name, account_status, unit_access)
+              VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?, 'pending', '[]')
+            `
+          )
+          .run(username, salt, hash, discordUsername, discordUser.id, avatar, discordUser.email || "", discordUsername);
+        user = db.prepare("SELECT * FROM users WHERE id = ?").get(result.lastInsertRowid);
+        writeAudit(user, "discord.registered", username, { discordId: discordUser.id });
+      } else {
+        db.prepare("UPDATE users SET discord_username = ?, discord_avatar = ?, email = ? WHERE id = ?")
+          .run(discordUsername, avatar, discordUser.email || "", user.id);
+        user = db.prepare("SELECT * FROM users WHERE id = ?").get(user.id);
+      }
+
+      const token = createSession(user.id);
+      sendRedirect(response, `/index.html?discord_token=${token}`, ["discord_oauth_state=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"]);
+    } catch (error) {
+      sendRedirect(response, `/index.html?discord_error=${encodeURIComponent(error.message)}`, ["discord_oauth_state=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"]);
+    }
     return true;
   }
 
@@ -393,7 +535,7 @@ async function handleApi(request, response, pathname) {
   if (pathname === "/api/admin/users" && request.method === "GET") {
     if (!requireOwner(request, response)) return true;
     const users = db
-      .prepare("SELECT id, username, role, discord_username, rp_name, ct_number, rp_name_2, rp_name_3, account_status, unit_access, created_at FROM users ORDER BY created_at DESC")
+      .prepare("SELECT id, username, role, discord_username, discord_id, discord_avatar, email, rp_name, ct_number, rp_name_2, rp_name_3, account_status, unit_access, created_at FROM users ORDER BY created_at DESC")
       .all()
       .map(sanitizeUser);
     sendJson(response, 200, { ok: true, users });

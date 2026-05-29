@@ -242,6 +242,7 @@ const els = {
   setupCodeField: document.querySelector("#setupCodeField"),
   authError: document.querySelector("#authError"),
   authSubmit: document.querySelector("#authSubmit"),
+  discordLoginButton: document.querySelector("#discordLoginButton"),
   authSwitchButton: document.querySelector("#authSwitchButton"),
   registerFields: document.querySelector("#registerFields")
 };
@@ -262,6 +263,7 @@ async function apiFetch(url, options = {}) {
 
 async function requireLogin() {
   try {
+    consumeDiscordRedirect();
     const response = await apiFetch("./api/auth/status", { cache: "no-store" });
     const payload = await response.json();
     backendAvailable = true;
@@ -288,6 +290,23 @@ async function requireLogin() {
   }
 }
 
+function consumeDiscordRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const discordToken = params.get("discord_token");
+  const discordError = params.get("discord_error");
+  if (discordToken) {
+    authToken = discordToken;
+    localStorage.setItem(authTokenKey, authToken);
+  }
+  if (discordError) {
+    authMode = "login";
+    showAuthDialog(`Discord Login fehlgeschlagen: ${discordError}`);
+  }
+  if (discordToken || discordError) {
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+}
+
 function showAuthDialog(message = "") {
   const registerMode = authMode === "setup" || authMode === "register";
   els.authTitle.textContent = authMode === "setup" ? "Owner-Account erstellen" : authMode === "register" ? "Account erstellen" : "Login";
@@ -300,6 +319,7 @@ function showAuthDialog(message = "") {
       : "Melde dich an, um auf das Republic Network zuzugreifen.");
   els.authSubmit.textContent = authMode === "setup" ? "Owner erstellen" : authMode === "register" ? "Account erstellen" : "Einloggen";
   els.authSwitchButton.hidden = authMode === "setup" || authMode === "offline";
+  els.discordLoginButton.hidden = authMode === "setup" || authMode === "offline";
   els.authSwitchButton.textContent = authMode === "register" ? "Zum Login" : "Account erstellen";
   els.registerFields.hidden = !registerMode;
   els.setupCodeField.hidden = authMode !== "setup";
@@ -2620,7 +2640,7 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=29").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=30").catch(() => {});
   }
 
   setInterval(async () => {
