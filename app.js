@@ -1,0 +1,6 @@
+/service-worker.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
