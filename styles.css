@@ -10,7 +10,39 @@
   --brand-dark: #d99b1f;
   --accent: #4fd1ff;
   --danger: #ff4f6d;
+  --unit: #f6d365;
+  --unit-rgb: 246, 211, 101;
   --shadow: 0 24px 60px rgba(0, 0, 0, 0.52);
+}
+
+body[data-unit-theme="unit-212"] {
+  --unit: #ff9f2f;
+  --unit-rgb: 255, 159, 47;
+}
+
+body[data-unit-theme="unit-501"] {
+  --unit: #5da8ff;
+  --unit-rgb: 93, 168, 255;
+}
+
+body[data-unit-theme="unit-91"] {
+  --unit: #d7584f;
+  --unit-rgb: 215, 88, 79;
+}
+
+body[data-unit-theme="unit-fleet"] {
+  --unit: #5fe7ff;
+  --unit-rgb: 95, 231, 255;
+}
+
+body[data-unit-theme="unit-5th"] {
+  --unit: #63d471;
+  --unit-rgb: 99, 212, 113;
+}
+
+body[data-unit-theme="unit-security"] {
+  --unit: #ff4f6d;
+  --unit-rgb: 255, 79, 109;
 }
 
 * {
@@ -70,7 +102,7 @@ button {
   pointer-events: none;
   background:
     repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 7px),
-    radial-gradient(circle at 50% -12%, rgba(246, 211, 101, 0.22), transparent 12rem);
+    radial-gradient(circle at 50% -12%, rgba(var(--unit-rgb), 0.24), transparent 12rem);
   mix-blend-mode: screen;
 }
 
@@ -133,14 +165,32 @@ h1 {
 
 .unit-tab {
   min-height: 42px;
-  padding: 0 13px;
+  padding: 0 13px 0 10px;
   border: 1px solid rgba(246, 211, 101, 0.38);
   border-radius: 8px;
   background: rgba(3, 8, 20, 0.7);
   color: var(--ink);
   white-space: nowrap;
   font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
+
+.unit-tab i {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--unit);
+  box-shadow: 0 0 12px rgba(var(--unit-rgb), 0.58);
+}
+
+.unit-tab.unit-212 i { background: #ff9f2f; }
+.unit-tab.unit-501 i { background: #5da8ff; }
+.unit-tab.unit-91 i { background: #d7584f; }
+.unit-tab.unit-fleet i { background: #5fe7ff; }
+.unit-tab.unit-5th i { background: #63d471; }
+.unit-tab.unit-security i { background: #ff4f6d; }
 
 .unit-tab span {
   margin-left: 6px;
@@ -149,9 +199,9 @@ h1 {
 }
 
 .unit-tab.active {
-  background: linear-gradient(180deg, rgba(246, 211, 101, 0.98), rgba(217, 155, 31, 0.96));
+  background: linear-gradient(180deg, rgba(var(--unit-rgb), 0.98), rgba(var(--unit-rgb), 0.64));
   color: #111827;
-  box-shadow: 0 0 22px rgba(246, 211, 101, 0.22);
+  box-shadow: 0 0 22px rgba(var(--unit-rgb), 0.28);
 }
 
 .unit-tab.locked {
@@ -167,12 +217,12 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 8px;
   background:
-    linear-gradient(135deg, rgba(79, 209, 255, 0.1), transparent 44%),
+    linear-gradient(135deg, rgba(var(--unit-rgb), 0.12), transparent 44%),
     rgba(9, 18, 38, 0.72);
 }
 
 .access-panel strong {
-  color: var(--accent);
+  color: var(--unit);
   font-size: 0.9rem;
 }
 
@@ -345,8 +395,8 @@ select:focus {
   height: 3px;
   margin-bottom: 10px;
   border-radius: 999px;
-  background: var(--accent);
-  box-shadow: 0 0 14px rgba(79, 209, 255, 0.76);
+  background: var(--unit);
+  box-shadow: 0 0 14px rgba(var(--unit-rgb), 0.76);
 }
 
 .thread-card header {
@@ -699,6 +749,30 @@ dialog::backdrop {
     rgba(9, 18, 38, 0.84);
 }
 
+.member-card.dossier {
+  position: relative;
+  border-color: rgba(var(--unit-rgb), 0.38);
+}
+
+.member-card.dossier::after {
+  content: "PERSONALAKTE";
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  color: rgba(var(--unit-rgb), 0.18);
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.member-card header b {
+  align-self: start;
+  border: 1px solid rgba(var(--unit-rgb), 0.48);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--unit);
+  font-size: 0.7rem;
+}
+
 .member-card h3 {
   margin: 0 0 4px;
   font-size: 1rem;
@@ -878,21 +952,32 @@ dialog::backdrop {
 
 .chat-header {
   padding: 12px;
-  border: 1px solid rgba(79, 209, 255, 0.28);
+  border: 1px solid rgba(var(--unit-rgb), 0.34);
   border-radius: 8px;
   background:
-    linear-gradient(135deg, rgba(79, 209, 255, 0.12), transparent 44%),
+    linear-gradient(135deg, rgba(var(--unit-rgb), 0.14), transparent 44%),
     rgba(9, 18, 38, 0.78);
 }
 
 .chat-header strong {
   display: block;
-  color: var(--accent);
+  color: var(--unit);
 }
 
 .chat-header span {
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+.chat-header i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 7px;
+  border-radius: 999px;
+  background: #50fa7b;
+  box-shadow: 0 0 12px #50fa7b;
+  animation: pulseStatus 1.6s infinite;
 }
 
 .chat-log {
@@ -907,7 +992,9 @@ dialog::backdrop {
   padding: 10px;
   border: 1px solid rgba(139, 172, 210, 0.22);
   border-radius: 8px;
-  background: rgba(3, 8, 20, 0.56);
+  background:
+    linear-gradient(90deg, rgba(var(--unit-rgb), 0.1), transparent 46%),
+    rgba(3, 8, 20, 0.56);
 }
 
 .chat-message header {
@@ -918,7 +1005,7 @@ dialog::backdrop {
 }
 
 .chat-message strong {
-  color: var(--brand);
+  color: var(--unit);
 }
 
 .chat-message span {
@@ -937,6 +1024,15 @@ dialog::backdrop {
   display: grid;
   grid-template-columns: 1fr 48px;
   gap: 10px;
+}
+
+@keyframes pulseStatus {
+  0%, 100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 @media (min-width: 760px) {

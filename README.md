@@ -40,6 +40,7 @@ Siehe [DEPLOYMENT.md](DEPLOYMENT.md).
 - Owner-Passwortreset fuer Nutzer
 - Ranghistorie in Personalakten
 - Adminbereich serverseitig und clientseitig auf Owner beschraenkt
+- Einheitsfarben, Dossier-Design und Comms-Chat-Look
 - Erweiterte Akten mit Notizen, Verwarnungen, Auszeichnungen und Einsatzhistorie
 - Automatische Chat-Aktualisierung
 - PWA-Manifest und Service Worker fuer App-Installation

@@ -10,13 +10,13 @@ const defaultCategoryPermissions = {
 };
 
 const units = [
-  { id: "Holonet", name: "Holonet", public: true, code: "" },
-  { id: "212th", name: "212th", public: false, code: "212-AX7" },
-  { id: "501st", name: "501st", public: false, code: "501-VDR" },
-  { id: "91st", name: "91st", public: false, code: "91-RCN" },
-  { id: "Fleet Crew", name: "Fleet Crew", public: false, code: "FLT-CRW" },
-  { id: "5th", name: "5th", public: false, code: "5TH-ARC" },
-  { id: "Flottensicherheit", name: "Flottensicherheit", public: false, code: "SEC-5F" }
+  { id: "Holonet", name: "Holonet", public: true, code: "", theme: "holonet" },
+  { id: "212th", name: "212th", public: false, code: "212-AX7", theme: "unit-212" },
+  { id: "501st", name: "501st", public: false, code: "501-VDR", theme: "unit-501" },
+  { id: "91st", name: "91st", public: false, code: "91-RCN", theme: "unit-91" },
+  { id: "Fleet Crew", name: "Fleet Crew", public: false, code: "FLT-CRW", theme: "unit-fleet" },
+  { id: "5th", name: "5th", public: false, code: "5TH-ARC", theme: "unit-5th" },
+  { id: "Flottensicherheit", name: "Flottensicherheit", public: false, code: "SEC-5F", theme: "unit-security" }
 ];
 
 const cloneRanks = [
@@ -561,7 +561,7 @@ function renderUnitTabs() {
       const active = unit.id === state.activeUnit ? " active" : "";
       const locked = !hasAccess(unit.id) ? " locked" : "";
       const marker = unit.public || hasAccess(unit.id) ? "" : " <span>LOCK</span>";
-      return `<button class="unit-tab${active}${locked}" data-unit="${unit.id}">${unit.name}${marker}</button>`;
+      return `<button class="unit-tab ${unit.theme}${active}${locked}" data-unit="${unit.id}"><i></i>${unit.name}${marker}</button>`;
     })
     .join("");
 }
@@ -733,12 +733,13 @@ function renderMembersPanel() {
               .map((member) => {
                 const rank = rankMap[member.rankCode] || getFlatRanks(state.activeUnit).at(-1);
                 return `
-                  <article class="member-card" data-member-id="${member.id}">
+                  <article class="member-card dossier" data-member-id="${member.id}">
                     <header>
                       <div>
                         <h3>${escapeHtml(member.name)}</h3>
                         <span>${escapeHtml(member.serial)} - ${escapeHtml(rankLabel(rank))}</span>
                       </div>
+                      <b>AKTIV</b>
                     </header>
                     <div class="training-list">
                       ${member.trainings
@@ -796,7 +797,7 @@ function renderChatPanel() {
     <div class="chat-header">
       <div>
         <strong>${escapeHtml(state.activeUnit)} Einheitschat</strong>
-        <span>Interner RP-Funkkanal</span>
+        <span><i></i>COMMS ONLINE - Interner RP-Funkkanal</span>
       </div>
     </div>
     <div class="chat-log">
@@ -949,6 +950,7 @@ function renderDetail() {
 }
 
 function renderAll() {
+  document.body.dataset.unitTheme = getUnit(state.activeUnit)?.theme || "holonet";
   renderUnitTabs();
   renderAccessPanel();
   renderTabs();
@@ -1430,7 +1432,7 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=17").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=20").catch(() => {});
   }
 
   setInterval(async () => {
