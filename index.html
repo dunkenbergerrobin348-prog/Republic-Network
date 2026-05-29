@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#050816" />
     <title>Galactic Forum</title>
-    <link rel="manifest" href="manifest.webmanifest?v=14" />
-    <link rel="stylesheet" href="styles.css?v=14" />
+    <link rel="manifest" href="manifest.webmanifest?v=15" />
+    <link rel="stylesheet" href="styles.css?v=15" />
   </head>
   <body>
     <div class="app-shell">
@@ -180,15 +180,34 @@
         </header>
         <p class="security-copy" id="authCopy">Melde dich an, um auf das Republic Network zuzugreifen.</p>
         <label>
-          Benutzername
+          Benutzername (Discord)
           <input id="authUsername" required minlength="3" maxlength="32" autocomplete="username" />
         </label>
+        <div class="register-fields" id="registerFields">
+          <label>
+            RP Name
+            <input id="authRpName" maxlength="48" placeholder="z.B. CT Rex" />
+          </label>
+          <label>
+            CT Nummer
+            <input id="authCtNumber" maxlength="24" placeholder="z.B. CT-7567" />
+          </label>
+          <label>
+            2. RP Name
+            <input id="authRpName2" maxlength="48" placeholder="Optional" />
+          </label>
+          <label>
+            3. RP Name
+            <input id="authRpName3" maxlength="48" placeholder="Optional" />
+          </label>
+        </div>
         <label>
           Passwort
           <input id="authPassword" required minlength="6" maxlength="128" type="password" autocomplete="current-password" />
         </label>
         <p class="access-error" id="authError"></p>
         <button class="primary-button" id="authSubmit" type="submit">Einloggen</button>
+        <button class="chip-button full-width" id="authSwitchButton" type="button">Account erstellen</button>
       </form>
     </dialog>
 
@@ -199,6 +218,6 @@
         }));
       }
     </script>
-    <script src="app.js?v=14"></script>
+    <script src="app.js?v=15"></script>
   </body>
 </html>

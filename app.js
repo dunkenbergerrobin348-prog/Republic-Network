@@ -184,9 +184,15 @@ const els = {
   authTitle: document.querySelector("#authTitle"),
   authCopy: document.querySelector("#authCopy"),
   authUsername: document.querySelector("#authUsername"),
+  authRpName: document.querySelector("#authRpName"),
+  authCtNumber: document.querySelector("#authCtNumber"),
+  authRpName2: document.querySelector("#authRpName2"),
+  authRpName3: document.querySelector("#authRpName3"),
   authPassword: document.querySelector("#authPassword"),
   authError: document.querySelector("#authError"),
-  authSubmit: document.querySelector("#authSubmit")
+  authSubmit: document.querySelector("#authSubmit"),
+  authSwitchButton: document.querySelector("#authSwitchButton"),
+  registerFields: document.querySelector("#registerFields")
 };
 
 function authHeaders() {
@@ -209,7 +215,7 @@ async function requireLogin() {
     const payload = await response.json();
     backendAvailable = true;
     if (payload.user) {
-      state.user.name = payload.user.username;
+      state.user.name = payload.user.rpName || payload.user.username;
       state.user.bio = payload.user.role === "owner" ? "Account Owner" : "Mitglied";
       return true;
     }
@@ -226,13 +232,21 @@ async function requireLogin() {
 }
 
 function showAuthDialog(message = "") {
-  els.authTitle.textContent = authMode === "setup" ? "Owner-Account erstellen" : "Login";
+  const registerMode = authMode === "setup" || authMode === "register";
+  els.authTitle.textContent = authMode === "setup" ? "Owner-Account erstellen" : authMode === "register" ? "Account erstellen" : "Login";
   els.authCopy.textContent =
     message ||
     (authMode === "setup"
       ? "Erstelle den ersten Account. Dieser Account ist der Server-Owner."
+      : authMode === "register"
+        ? "Erstelle deinen Republic-Network-Account mit Discord- und RP-Daten."
       : "Melde dich an, um auf das Republic Network zuzugreifen.");
-  els.authSubmit.textContent = authMode === "setup" ? "Owner erstellen" : "Einloggen";
+  els.authSubmit.textContent = authMode === "setup" ? "Owner erstellen" : authMode === "register" ? "Account erstellen" : "Einloggen";
+  els.authSwitchButton.hidden = authMode === "setup" || authMode === "offline";
+  els.authSwitchButton.textContent = authMode === "register" ? "Zum Login" : "Account erstellen";
+  els.registerFields.hidden = !registerMode;
+  els.authRpName.required = registerMode;
+  els.authPassword.autocomplete = registerMode ? "new-password" : "current-password";
   els.authError.textContent = "";
   els.authPassword.value = "";
   if (!els.authDialog.open) els.authDialog.showModal();
@@ -242,12 +256,20 @@ async function submitAuth() {
   if (authMode === "offline") return;
   const username = els.authUsername.value.trim();
   const password = els.authPassword.value;
-  const endpoint = authMode === "setup" ? "./api/auth/setup" : "./api/auth/login";
+  const endpoint = authMode === "setup" ? "./api/auth/setup" : authMode === "register" ? "./api/auth/register" : "./api/auth/login";
 
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username, password })
+    body: JSON.stringify({
+      username,
+      discordUsername: username,
+      password,
+      rpName: els.authRpName.value.trim(),
+      ctNumber: els.authCtNumber.value.trim(),
+      rpName2: els.authRpName2.value.trim(),
+      rpName3: els.authRpName3.value.trim()
+    })
   });
   const payload = await response.json();
   if (!response.ok || !payload.ok) {
@@ -257,7 +279,7 @@ async function submitAuth() {
 
   authToken = payload.token;
   localStorage.setItem(authTokenKey, authToken);
-  state.user.name = payload.user.username;
+  state.user.name = payload.user.rpName || payload.user.username;
   state.user.bio = payload.user.role === "owner" ? "Account Owner" : "Mitglied";
   els.authDialog.close();
   await loadState();
@@ -804,6 +826,11 @@ function bindEvents() {
     submitAuth();
   });
 
+  els.authSwitchButton.addEventListener("click", () => {
+    authMode = authMode === "register" ? "login" : "register";
+    showAuthDialog();
+  });
+
   els.unitTabs.addEventListener("click", (event) => {
     const button = event.target.closest(".unit-tab");
     if (!button) return;
@@ -1118,7 +1145,7 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=14").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=15").catch(() => {});
   }
 }
 

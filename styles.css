@@ -425,6 +425,15 @@ select:focus {
   width: 100%;
 }
 
+.register-fields {
+  display: grid;
+  gap: 0;
+}
+
+.register-fields[hidden] {
+  display: none;
+}
+
 .bottom-nav {
   position: fixed;
   left: 50%;

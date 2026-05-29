@@ -36,6 +36,11 @@ db.exec(`
     password_salt TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'member',
+    discord_username TEXT NOT NULL DEFAULT '',
+    rp_name TEXT NOT NULL DEFAULT '',
+    ct_number TEXT NOT NULL DEFAULT '',
+    rp_name_2 TEXT NOT NULL DEFAULT '',
+    rp_name_3 TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -47,6 +52,20 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 `);
+
+for (const migration of [
+  "ALTER TABLE users ADD COLUMN discord_username TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN rp_name TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN ct_number TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN rp_name_2 TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN rp_name_3 TEXT NOT NULL DEFAULT ''"
+]) {
+  try {
+    db.exec(migration);
+  } catch (error) {
+    if (!String(error.message).includes("duplicate column")) throw error;
+  }
+}
 
 function sendJson(response, status, payload) {
   response.writeHead(status, {
@@ -89,7 +108,16 @@ function verifyPassword(password, salt, expectedHash) {
 
 function sanitizeUser(user) {
   if (!user) return null;
-  return { id: user.id, username: user.username, role: user.role };
+  return {
+    id: user.id,
+    username: user.username,
+    role: user.role,
+    discordUsername: user.discord_username || user.username,
+    rpName: user.rp_name || user.username,
+    ctNumber: user.ct_number || "",
+    rpName2: user.rp_name_2 || "",
+    rpName3: user.rp_name_3 || ""
+  };
 }
 
 function getAuthUser(request) {
@@ -100,7 +128,7 @@ function getAuthUser(request) {
   const row = db
     .prepare(
       `
-        SELECT users.id, users.username, users.role
+        SELECT users.id, users.username, users.role, users.discord_username, users.rp_name, users.ct_number, users.rp_name_2, users.rp_name_3
         FROM sessions
         JOIN users ON users.id = sessions.user_id
         WHERE sessions.token = ? AND sessions.expires_at > CURRENT_TIMESTAMP
@@ -183,6 +211,8 @@ async function handleApi(request, response, pathname) {
       const payload = await readJsonBody(request);
       const username = String(payload.username || "").trim();
       const password = String(payload.password || "");
+      const rpName = String(payload.rpName || username).trim();
+      const ctNumber = String(payload.ctNumber || "").trim();
       if (username.length < 3 || password.length < 6) {
         sendJson(response, 400, { ok: false, error: "Benutzername min. 3 Zeichen, Passwort min. 6 Zeichen" });
         return true;
@@ -190,12 +220,67 @@ async function handleApi(request, response, pathname) {
 
       const { salt, hash } = hashPassword(password);
       const result = db
-        .prepare("INSERT INTO users (username, password_salt, password_hash, role) VALUES (?, ?, ?, 'owner')")
-        .run(username, salt, hash);
-      const user = db.prepare("SELECT id, username, role FROM users WHERE id = ?").get(result.lastInsertRowid);
+        .prepare(
+          `
+            INSERT INTO users (username, password_salt, password_hash, role, discord_username, rp_name, ct_number, rp_name_2, rp_name_3)
+            VALUES (?, ?, ?, 'owner', ?, ?, ?, ?, ?)
+          `
+        )
+        .run(
+          username,
+          salt,
+          hash,
+          String(payload.discordUsername || username).trim(),
+          rpName,
+          ctNumber,
+          String(payload.rpName2 || "").trim(),
+          String(payload.rpName3 || "").trim()
+        );
+      const user = db.prepare("SELECT * FROM users WHERE id = ?").get(result.lastInsertRowid);
       sendJson(response, 200, { ok: true, token: createSession(user.id), user: sanitizeUser(user) });
     } catch (error) {
       sendJson(response, 400, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (pathname === "/api/auth/register" && request.method === "POST") {
+    try {
+      const payload = await readJsonBody(request);
+      const username = String(payload.username || payload.discordUsername || "").trim();
+      const discordUsername = String(payload.discordUsername || username).trim();
+      const rpName = String(payload.rpName || "").trim();
+      const ctNumber = String(payload.ctNumber || "").trim();
+      const password = String(payload.password || "");
+
+      if (username.length < 3 || password.length < 6 || rpName.length < 2) {
+        sendJson(response, 400, { ok: false, error: "Discord/Benutzername, RP-Name und Passwort sind erforderlich" });
+        return true;
+      }
+
+      const { salt, hash } = hashPassword(password);
+      const result = db
+        .prepare(
+          `
+            INSERT INTO users (username, password_salt, password_hash, role, discord_username, rp_name, ct_number, rp_name_2, rp_name_3)
+            VALUES (?, ?, ?, 'member', ?, ?, ?, ?, ?)
+          `
+        )
+        .run(
+          username,
+          salt,
+          hash,
+          discordUsername,
+          rpName,
+          ctNumber,
+          String(payload.rpName2 || "").trim(),
+          String(payload.rpName3 || "").trim()
+        );
+      const user = db.prepare("SELECT * FROM users WHERE id = ?").get(result.lastInsertRowid);
+      sendJson(response, 200, { ok: true, token: createSession(user.id), user: sanitizeUser(user) });
+    } catch (error) {
+      const message = String(error.message).includes("UNIQUE") ? "Dieser Discord-/Benutzername existiert bereits" : error.message;
+      sendJson(response, 400, { ok: false, error: message });
     }
     return true;
   }
