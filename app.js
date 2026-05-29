@@ -141,10 +141,12 @@ const state = {
   chats: {},
   memberTemplates: {},
   memberFilters: { search: "", status: "all", label: "all", training: "all" },
+  selectedMemberId: null,
   activityLogs: {},
   missionReports: {},
   announcements: {},
   memberAudit: [],
+  promotionRequests: [],
   rankRights: {},
   notifications: [],
   wikiPages: {},
@@ -187,6 +189,8 @@ const els = {
   profileForm: document.querySelector("#profileForm"),
   displayName: document.querySelector("#displayName"),
   profileBio: document.querySelector("#profileBio"),
+  profilePassword: document.querySelector("#profilePassword"),
+  profilePasswordMessage: document.querySelector("#profilePasswordMessage"),
   logoutButton: document.querySelector("#logoutButton"),
   profileInitial: document.querySelector("#profileInitial"),
   threadCount: document.querySelector("#threadCount"),
@@ -204,6 +208,9 @@ const els = {
   skipIntroButton: document.querySelector("#skipIntroButton"),
   memberDialog: document.querySelector("#memberDialog"),
   memberForm: document.querySelector("#memberForm"),
+  memberDetailDialog: document.querySelector("#memberDetailDialog"),
+  memberDetailBody: document.querySelector("#memberDetailBody"),
+  closeMemberDetailButton: document.querySelector("#closeMemberDetailButton"),
   memberName: document.querySelector("#memberName"),
   memberSerial: document.querySelector("#memberSerial"),
   memberRank: document.querySelector("#memberRank"),
@@ -361,6 +368,7 @@ async function loadState() {
       state.missionReports = shared?.missionReports || {};
       state.announcements = shared?.announcements || {};
       state.memberAudit = shared?.memberAudit || [];
+      state.promotionRequests = shared?.promotionRequests || [];
       state.rankRights = shared?.rankRights || {};
       state.notifications = shared?.notifications || [];
       state.wikiPages = shared?.wikiPages || {};
@@ -385,6 +393,7 @@ async function loadState() {
     state.missionReports = parsed.missionReports || {};
     state.announcements = parsed.announcements || {};
     state.memberAudit = parsed.memberAudit || [];
+    state.promotionRequests = parsed.promotionRequests || [];
     state.rankRights = parsed.rankRights || {};
     state.notifications = parsed.notifications || [];
     state.wikiPages = parsed.wikiPages || {};
@@ -417,6 +426,7 @@ function saveState() {
       missionReports: state.missionReports,
       announcements: state.announcements,
       memberAudit: state.memberAudit,
+      promotionRequests: state.promotionRequests,
       rankRights: state.rankRights,
       notifications: state.notifications,
       wikiPages: state.wikiPages,
@@ -440,6 +450,7 @@ function saveState() {
       missionReports: state.missionReports,
       announcements: state.announcements,
       memberAudit: state.memberAudit,
+      promotionRequests: state.promotionRequests,
       rankRights: state.rankRights,
       notifications: state.notifications,
       wikiPages: state.wikiPages,
@@ -520,6 +531,10 @@ function getMissionReports(unitId = state.activeUnit) {
 function getAnnouncements(unitId = state.activeUnit) {
   state.announcements[unitId] ||= [];
   return state.announcements[unitId];
+}
+
+function getPromotionRequests(unitId = state.activeUnit) {
+  return state.promotionRequests.filter((request) => request.unit === unitId);
 }
 
 function setMembers(unitId, members) {
@@ -624,6 +639,15 @@ function createMemberFromTemplate(template, name, serial) {
     history: template.history || "",
     createdAt: Date.now()
   };
+}
+
+function exportJson(filename, payload) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
 }
 
 function clearSeedData() {
@@ -908,6 +932,12 @@ function renderMembersPanel() {
       ${canManageRecords() ? `<button class="chip-button" id="addMemberButton" type="button">Akte +</button>` : ""}
     </div>
     <section class="command-panel">
+      <section class="unit-dashboard">
+        <div><strong>${allMembers.length}</strong><span>Personalakten</span></div>
+        <div><strong>${allMembers.filter((member) => normalizeTrainings(member).trainings.some((training) => !training.done)).length}</strong><span>offene Fortbildungen</span></div>
+        <div><strong>${allMembers.filter((member) => member.absentUntil).length}</strong><span>abwesend</span></div>
+        <div><strong>${getPromotionRequests().filter((request) => request.status === "offen").length}</strong><span>Beförderungsantraege</span></div>
+      </section>
       <div class="member-filters">
         <input id="memberSearchInput" value="${escapeHtml(filter.search)}" placeholder="Akten suchen: Name, CT, Rang, Label" />
         <select id="memberStatusFilter">
@@ -959,6 +989,7 @@ function renderMembersPanel() {
       </div>
       <div class="action-row">
         <button class="chip-button" id="exportMembersButton" type="button">CSV Export</button>
+        <button class="chip-button" id="exportUnitBackupButton" type="button">Einheit Backup</button>
       </div>
     </section>
     ${
@@ -1134,6 +1165,7 @@ function renderMembersPanel() {
                                     </div>
                                     <div class="action-row">
                                       ${canManageRecords() ? `<button class="chip-button" data-member-action="template" type="button">Als Vorlage</button>` : ""}
+                                      <button class="chip-button" data-member-action="detail" type="button">Details</button>
                                       ${canPromoteMembers() ? `<button class="chip-button" data-member-action="promote" type="button">Befoerdern</button>` : ""}
                                       ${canPromoteMembers() ? `<button class="chip-button" data-member-action="demote" type="button">Degradieren</button>` : ""}
                                       ${canManageRecords() ? `<button class="chip-button danger" data-member-action="delete" type="button">Akte loeschen</button>` : ""}
@@ -1334,6 +1366,13 @@ function renderAdminPanel() {
       <strong>Admin Dashboard</strong>
       <button class="chip-button" id="refreshAdminButton" type="button">Aktualisieren</button>
     </div>
+    <section class="command-panel">
+      <div class="member-filters">
+        <input id="ownerGlobalSearch" placeholder="Owner-Suche: Name, CT, Rang, Label, Einheit" />
+        <button class="chip-button" id="exportFullBackupButton" type="button">Vollbackup JSON</button>
+      </div>
+      <div class="command-lists" id="ownerSearchResults"></div>
+    </section>
     <section class="dashboard-strip">
       ${units
         .filter((unit) => !unit.public)
@@ -1408,6 +1447,15 @@ function renderAdminPanel() {
             .map((entry) => `<div class="audit-entry"><span>${formatTime(entry.createdAt)} - ${escapeHtml(entry.unit)}</span><strong>${escapeHtml(entry.action)}</strong><p>${escapeHtml(entry.actor)} -> ${escapeHtml(entry.member)} ${escapeHtml(entry.details || "")}</p></div>`)
             .join("")
         : `<div class="empty-state">Noch keine Akten-Aenderungen.</div>`}
+    </section>
+    <section class="audit-panel">
+      <strong>Beförderungsantraege</strong>
+      ${state.promotionRequests.length
+        ? state.promotionRequests
+            .slice(0, 80)
+            .map((request) => `<div class="audit-entry" data-promotion-id="${request.id}"><span>${formatTime(request.createdAt)} - ${escapeHtml(request.unit)}</span><strong>${escapeHtml(request.memberName)}: ${escapeHtml(request.fromRank)} -> ${escapeHtml(request.toRank)}</strong><p>${escapeHtml(request.reason)} (${escapeHtml(request.status)})</p>${request.status === "offen" ? `<div class="action-row"><button class="chip-button" data-promotion-decision="angenommen" type="button">Annehmen</button><button class="chip-button danger" data-promotion-decision="abgelehnt" type="button">Ablehnen</button></div>` : ""}</div>`)
+            .join("")
+        : `<div class="empty-state">Keine offenen Antraege.</div>`}
     </section>
   `;
 }
@@ -1518,6 +1566,45 @@ function changeMemberRank(memberId, direction) {
   renderMembersPanel();
 }
 
+function renderMemberDetail(memberId) {
+  const member = normalizeTrainings(getMembers().find((item) => item.id === memberId) || {});
+  if (!member.id) return;
+  state.selectedMemberId = memberId;
+  const rankMap = Object.fromEntries(getFlatRanks(state.activeUnit).map((rank) => [rank.code, rank]));
+  const memberActivities = getActivityLogs().filter((entry) => normalizeName(entry.member).includes(normalizeName(member.name)) || normalizeName(entry.member).includes(normalizeName(member.serial)));
+  const memberMissions = getMissionReports().filter((report) => report.members?.some((name) => normalizeName(name).includes(normalizeName(member.name)) || normalizeName(name).includes(normalizeName(member.serial))));
+  const audit = state.memberAudit.filter((entry) => entry.unit === state.activeUnit && entry.serial === member.serial);
+  const requests = getPromotionRequests().filter((request) => request.memberId === member.id);
+  els.memberDetailBody.innerHTML = `
+    <section class="member-detail-hero">
+      <div>
+        <strong>${escapeHtml(member.name)}</strong>
+        <span>${escapeHtml(member.serial)} - ${escapeHtml(rankLabel(rankMap[member.rankCode] || getFlatRanks(state.activeUnit).at(-1)))}</span>
+      </div>
+      <div class="label-row">${(member.labels || []).map((label) => `<small class="member-label">${escapeHtml(label)}</small>`).join("")}</div>
+    </section>
+    <section class="detail-grid">
+      <article><strong>Fortbildungen</strong>${member.trainings.map((training) => `<p>${training.done ? "[x]" : "[ ]"} ${escapeHtml(training.name)}</p>`).join("")}</article>
+      <article><strong>RP Profil</strong><p>${escapeHtml(member.rpProfile || "Nicht hinterlegt.")}</p><p>${escapeHtml(member.specialization || "")}</p></article>
+      <article><strong>Ranghistorie</strong>${member.rankHistory?.length ? member.rankHistory.slice().reverse().map((entry) => `<p>${formatTime(entry.createdAt)}: ${escapeHtml(entry.from)} -> ${escapeHtml(entry.to)} (${escapeHtml(entry.reason || "")})</p>`).join("") : "<p>Keine Rangbewegungen.</p>"}</article>
+      <article><strong>Aktivitaet</strong>${memberActivities.length ? memberActivities.slice(0, 8).map((entry) => `<p>${escapeHtml(entry.type)}: ${escapeHtml(entry.note)}</p>`).join("") : "<p>Keine Eintraege.</p>"}</article>
+      <article><strong>Missionen</strong>${memberMissions.length ? memberMissions.slice(0, 8).map((report) => `<p>${escapeHtml(report.title)}: ${escapeHtml(report.result)}</p>`).join("") : "<p>Keine Missionen verknuepft.</p>"}</article>
+      <article><strong>Aktennotizen</strong><p>${escapeHtml(member.notes || "Keine Notizen.")}</p><p>${escapeHtml(member.warnings || "")}</p><p>${escapeHtml(member.awards || "")}</p></article>
+      <article><strong>Akten-Audit</strong>${audit.length ? audit.slice(0, 8).map((entry) => `<p>${formatTime(entry.createdAt)}: ${escapeHtml(entry.action)} - ${escapeHtml(entry.details || "")}</p>`).join("") : "<p>Keine Aenderungen.</p>"}</article>
+      <article><strong>Beförderungsantraege</strong>${requests.length ? requests.map((request) => `<p>${escapeHtml(request.status)}: ${escapeHtml(request.fromRank)} -> ${escapeHtml(request.toRank)} - ${escapeHtml(request.reason)}</p>`).join("") : "<p>Keine Antraege.</p>"}</article>
+    </section>
+    <form id="promotionRequestForm" class="mini-form">
+      <strong>Beförderungsantrag</strong>
+      <select id="promotionTargetRank" required>
+        ${getFlatRanks(state.activeUnit).map((rank) => `<option value="${rank.code}" ${rank.code === member.rankCode ? "selected" : ""}>${escapeHtml(rankLabel(rank))}</option>`).join("")}
+      </select>
+      <textarea id="promotionReason" required maxlength="300" rows="3" placeholder="Begruendung, Leistung, Mission"></textarea>
+      <button class="primary-button" type="submit">Antrag stellen</button>
+    </form>
+  `;
+  els.memberDetailDialog.showModal();
+}
+
 function bindEvents() {
   if (eventsBound) return;
   eventsBound = true;
@@ -1620,6 +1707,19 @@ function bindEvents() {
       return;
     }
 
+    if (event.target.closest("#exportUnitBackupButton")) {
+      exportJson(`${state.activeUnit}-backup.json`, {
+        unit: state.activeUnit,
+        members: getMembers(),
+        activityLogs: getActivityLogs(),
+        missionReports: getMissionReports(),
+        announcements: getAnnouncements(),
+        promotionRequests: getPromotionRequests(),
+        exportedAt: new Date().toISOString()
+      });
+      return;
+    }
+
     if (event.target.closest("#addMemberButton")) {
       if (!canManageRecords()) return;
       renderMemberRankOptions();
@@ -1654,6 +1754,10 @@ function bindEvents() {
     const actionButton = event.target.closest("[data-member-action]");
     if (!actionButton) return;
     const card = event.target.closest(".member-card");
+    if (actionButton.dataset.memberAction === "detail") {
+      renderMemberDetail(card.dataset.memberId);
+      return;
+    }
     if (actionButton.dataset.memberAction === "delete") {
       if (!canManageRecords()) return;
       deleteMember(card.dataset.memberId);
@@ -1782,6 +1886,35 @@ function bindEvents() {
     setMembers(state.activeUnit, members);
     renderMembersPanel();
   });
+
+  els.memberDetailBody?.addEventListener("submit", (event) => {
+    const form = event.target.closest("#promotionRequestForm");
+    if (!form) return;
+    event.preventDefault();
+    const member = getMembers().find((item) => item.id === state.selectedMemberId);
+    if (!member) return;
+    const targetRank = document.querySelector("#promotionTargetRank").value;
+    const reason = document.querySelector("#promotionReason").value.trim();
+    state.promotionRequests.unshift({
+      id: crypto.randomUUID(),
+      unit: state.activeUnit,
+      memberId: member.id,
+      memberName: member.name,
+      serial: member.serial,
+      fromRank: member.rankCode,
+      toRank: targetRank,
+      reason,
+      status: "offen",
+      requestedBy: state.user.name,
+      createdAt: Date.now()
+    });
+    logMemberAudit("rang.antrag", member, `${member.rankCode} -> ${targetRank}: ${reason}`);
+    addUnitNotification("Beförderungsantrag", `${member.name}: ${member.rankCode} -> ${targetRank}`, state.activeUnit);
+    saveState();
+    renderMemberDetail(member.id);
+  });
+
+  els.closeMemberDetailButton?.addEventListener("click", () => els.memberDetailDialog.close());
 
   els.membersPanel.addEventListener("change", (event) => {
     if (event.target.closest("#memberSearchInput, #memberStatusFilter, #memberLabelFilter, #memberTrainingFilter")) {
@@ -1969,8 +2102,59 @@ function bindEvents() {
   els.adminPanel.addEventListener("click", async (event) => {
     if (state.account?.role !== "owner") return;
 
+    if (event.target.closest("#exportFullBackupButton")) {
+      exportJson("republic-network-backup.json", {
+        threads: state.threads,
+        members: state.members,
+        chats: state.chats,
+        memberTemplates: state.memberTemplates,
+        activityLogs: state.activityLogs,
+        missionReports: state.missionReports,
+        announcements: state.announcements,
+        memberAudit: state.memberAudit,
+        promotionRequests: state.promotionRequests,
+        rankRights: state.rankRights,
+        applications: state.applications,
+        permissions: state.permissions,
+        exportedAt: new Date().toISOString()
+      });
+      return;
+    }
+
     if (event.target.closest("#refreshAdminButton")) {
       await loadAdminUsers();
+      renderAdminPanel();
+      return;
+    }
+
+    const promotionButton = event.target.closest("[data-promotion-decision]");
+    if (promotionButton) {
+      const item = event.target.closest("[data-promotion-id]");
+      const request = state.promotionRequests.find((entry) => entry.id === item.dataset.promotionId);
+      if (!request) return;
+      state.promotionRequests = state.promotionRequests.map((entry) =>
+        entry.id === request.id ? { ...entry, status: promotionButton.dataset.promotionDecision, reviewedBy: state.user.name, reviewedAt: Date.now() } : entry
+      );
+      if (promotionButton.dataset.promotionDecision === "angenommen") {
+        const previousUnit = state.activeUnit;
+        state.activeUnit = request.unit;
+        const members = getMembers(request.unit).map((member) => {
+          if (member.id !== request.memberId) return member;
+          logMemberAudit("rang.antrag.angenommen", member, `${request.fromRank} -> ${request.toRank}`);
+          return {
+            ...member,
+            rankCode: request.toRank,
+            rankHistory: [
+              ...(member.rankHistory || []),
+              { id: crypto.randomUUID(), from: request.fromRank, to: request.toRank, actor: state.user.name, reason: request.reason, createdAt: Date.now() }
+            ]
+          };
+        });
+        setMembers(request.unit, members);
+        state.activeUnit = previousUnit;
+      }
+      addNotification("Beförderungsantrag entschieden", `${request.memberName}: ${promotionButton.dataset.promotionDecision}`, request.unit);
+      saveState();
       renderAdminPanel();
       return;
     }
@@ -2009,6 +2193,24 @@ function bindEvents() {
       await loadAdminUsers();
       renderAdminPanel();
     }
+  });
+
+  els.adminPanel.addEventListener("input", (event) => {
+    if (!event.target.closest("#ownerGlobalSearch") || state.account?.role !== "owner") return;
+    const query = event.target.value.trim().toLowerCase();
+    const target = document.querySelector("#ownerSearchResults");
+    if (!target) return;
+    if (!query) {
+      target.innerHTML = "";
+      return;
+    }
+    const results = Object.entries(state.members)
+      .flatMap(([unit, members]) => members.map((member) => ({ unit, member: normalizeTrainings(member, unit) })))
+      .filter(({ unit, member }) => [unit, member.name, member.serial, member.rankCode, ...(member.labels || []), member.rpProfile || "", member.specialization || ""].join(" ").toLowerCase().includes(query))
+      .slice(0, 12);
+    target.innerHTML = results.length
+      ? results.map(({ unit, member }) => `<div><strong>${escapeHtml(member.name)}</strong><p>${escapeHtml(unit)} - ${escapeHtml(member.serial)} - ${escapeHtml(member.rankCode)}</p></div>`).join("")
+      : `<div><p>Keine Treffer.</p></div>`;
   });
 
   els.memberForm.addEventListener("submit", (event) => {
@@ -2201,9 +2403,25 @@ function bindEvents() {
       name: els.displayName.value.trim(),
       bio: els.profileBio.value.trim() || "Mitglied"
     };
+    const newPassword = els.profilePassword?.value || "";
+    if (newPassword) {
+      apiFetch("./api/auth/password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: newPassword })
+      })
+        .then(async (response) => {
+          const payload = await response.json().catch(() => ({}));
+          els.profilePasswordMessage.textContent = response.ok ? "Passwort wurde aktualisiert." : payload.error || "Passwort konnte nicht gesetzt werden.";
+          if (response.ok) els.profilePassword.value = "";
+        })
+        .catch(() => {
+          els.profilePasswordMessage.textContent = "Backend nicht erreichbar.";
+        });
+    }
     saveState();
     renderAll();
-    els.profileDialog.close();
+    if (!newPassword) els.profileDialog.close();
   });
 
   els.logoutButton.addEventListener("click", async () => {
@@ -2250,7 +2468,7 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=26").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=27").catch(() => {});
   }
 
   setInterval(async () => {

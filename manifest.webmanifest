@@ -4,6 +4,7 @@
   "description": "Eine mobile Sci-Fi-Forum-App mit Themen, Antworten, Suche und Kategorien.",
   "start_url": "./index.html",
   "display": "standalone",
+  "display_override": ["fullscreen", "standalone", "minimal-ui"],
   "background_color": "#050816",
   "theme_color": "#050816",
   "icons": [

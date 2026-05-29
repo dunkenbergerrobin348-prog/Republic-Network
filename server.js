@@ -218,6 +218,7 @@ function saveState(payload) {
     missionReports: payload.missionReports && typeof payload.missionReports === "object" ? payload.missionReports : {},
     announcements: payload.announcements && typeof payload.announcements === "object" ? payload.announcements : {},
     memberAudit: Array.isArray(payload.memberAudit) ? payload.memberAudit : [],
+    promotionRequests: Array.isArray(payload.promotionRequests) ? payload.promotionRequests : [],
     rankRights: payload.rankRights && typeof payload.rankRights === "object" ? payload.rankRights : {},
     notifications: Array.isArray(payload.notifications) ? payload.notifications : [],
     wikiPages: payload.wikiPages && typeof payload.wikiPages === "object" ? payload.wikiPages : {},
@@ -359,6 +360,27 @@ async function handleApi(request, response, pathname) {
     const token = header.startsWith("Bearer ") ? header.slice(7) : "";
     if (token) db.prepare("DELETE FROM sessions WHERE token = ?").run(token);
     sendJson(response, 200, { ok: true });
+    return true;
+  }
+
+  if (pathname === "/api/auth/password" && request.method === "POST") {
+    const user = requireApproved(request, response);
+    if (!user) return true;
+    try {
+      const payload = await readJsonBody(request);
+      const password = String(payload.password || "");
+      if (password.length < 6) {
+        sendJson(response, 400, { ok: false, error: "Passwort muss mindestens 6 Zeichen haben" });
+        return true;
+      }
+      const { salt, hash } = hashPassword(password);
+      db.prepare("UPDATE users SET password_salt = ?, password_hash = ? WHERE id = ?").run(salt, hash, user.id);
+      db.prepare("DELETE FROM sessions WHERE user_id = ? AND token <> ?").run(user.id, (request.headers.authorization || "").replace(/^Bearer /, ""));
+      writeAudit(user, "password.changed", user.username, {});
+      sendJson(response, 200, { ok: true });
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message });
+    }
     return true;
   }
 
