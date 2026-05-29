@@ -32,6 +32,10 @@ Siehe [DEPLOYMENT.md](DEPLOYMENT.md).
 - Owner- und Rechteverwaltung pro Einheit
 - Einheitschat pro Einheit
 - Login-System mit erstem Owner-Setup
+- Account-Freischaltung und Einheitszuweisung durch Owner
+- Admin-Dashboard fuer Nutzerstatus, Rollen und Einheiten
+- Erweiterte Akten mit Notizen, Verwarnungen, Auszeichnungen und Einsatzhistorie
+- Automatische Chat-Aktualisierung
 - PWA-Manifest und Service Worker fuer App-Installation
 
 ## Hinweis

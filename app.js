@@ -117,10 +117,13 @@ const state = {
   query: "",
   selectedThreadId: null,
   user: { name: "Du", bio: "Mitglied" },
+  account: null,
+  adminUsers: [],
   threads: [],
   access: {},
   members: {},
   chats: {},
+  notifications: [],
   owners: {},
   permissions: {}
 };
@@ -167,6 +170,7 @@ const els = {
   navItems: document.querySelectorAll(".nav-item"),
   membersPanel: document.querySelector("#membersPanel"),
   chatPanel: document.querySelector("#chatPanel"),
+  adminPanel: document.querySelector("#adminPanel"),
   memberDialog: document.querySelector("#memberDialog"),
   memberForm: document.querySelector("#memberForm"),
   memberName: document.querySelector("#memberName"),
@@ -215,8 +219,14 @@ async function requireLogin() {
     const payload = await response.json();
     backendAvailable = true;
     if (payload.user) {
+      state.account = payload.user;
       state.user.name = payload.user.rpName || payload.user.username;
       state.user.bio = payload.user.role === "owner" ? "Account Owner" : "Mitglied";
+      document.body.classList.toggle("is-owner", payload.user.role === "owner");
+      if (payload.user.role !== "owner" && payload.user.status !== "approved") {
+        showAuthDialog(payload.user.status === "blocked" ? "Dein Account ist gesperrt." : "Dein Account wartet auf Freischaltung durch einen Owner.");
+        return false;
+      }
       return true;
     }
 
@@ -281,6 +291,12 @@ async function submitAuth() {
   localStorage.setItem(authTokenKey, authToken);
   state.user.name = payload.user.rpName || payload.user.username;
   state.user.bio = payload.user.role === "owner" ? "Account Owner" : "Mitglied";
+  state.account = payload.user;
+  document.body.classList.toggle("is-owner", payload.user.role === "owner");
+  if (payload.user.role !== "owner" && payload.user.status !== "approved") {
+    showAuthDialog(payload.user.status === "blocked" ? "Dein Account ist gesperrt." : "Account erstellt. Bitte warte auf Freischaltung durch einen Owner.");
+    return true;
+  }
   els.authDialog.close();
   await loadState();
   renderThreadFormOptions();
@@ -305,6 +321,7 @@ async function loadState() {
       state.threads = shared?.threads || seedThreads;
       state.members = shared?.members || {};
       state.chats = shared?.chats || {};
+      state.notifications = shared?.notifications || [];
       state.owners = shared?.owners || {};
       state.permissions = shared?.permissions || {};
       if (!shared) saveState();
@@ -320,6 +337,7 @@ async function loadState() {
     state.threads = parsed.threads || seedThreads;
     state.members = parsed.members || {};
     state.chats = parsed.chats || {};
+    state.notifications = parsed.notifications || [];
     state.owners = parsed.owners || {};
     state.permissions = parsed.permissions || {};
     return;
@@ -343,6 +361,7 @@ function saveState() {
       threads: state.threads,
       members: state.members,
       chats: state.chats,
+      notifications: state.notifications,
       owners: state.owners,
       permissions: state.permissions
     })
@@ -357,6 +376,7 @@ function saveState() {
       threads: state.threads,
       members: state.members,
       chats: state.chats,
+      notifications: state.notifications,
       owners: state.owners,
       permissions: state.permissions
     })
@@ -379,7 +399,7 @@ function getUnit(unitId) {
 
 function hasAccess(unitId) {
   const unit = getUnit(unitId);
-  return Boolean(unit?.public || state.access[unitId]);
+  return Boolean(unit?.public || state.account?.role === "owner" || state.account?.unitAccess?.includes(unitId) || state.access[unitId]);
 }
 
 function getRankGroups(unitId) {
@@ -442,6 +462,12 @@ function clearSeedData() {
   renderAll();
 }
 
+function addNotification(title, body) {
+  state.notifications.unshift({ id: crypto.randomUUID(), title, body, createdAt: Date.now(), read: false });
+  state.notifications = state.notifications.slice(0, 60);
+  saveState();
+}
+
 function rankLabel(rank) {
   return `${rank.name} (${rank.code})`;
 }
@@ -451,7 +477,7 @@ function normalizeName(value) {
 }
 
 function isOwner(unitId = state.activeUnit) {
-  return Boolean(state.owners[unitId]?.includes(normalizeName(state.user.name)));
+  return Boolean(state.account?.role === "owner" || state.owners[unitId]?.includes(normalizeName(state.user.name)));
 }
 
 function getUserPermissions(unitId = state.activeUnit) {
@@ -518,7 +544,8 @@ function renderAccessPanel() {
   const unit = getUnit(state.activeUnit);
   const access = state.access[state.activeUnit];
   if (unit.public) {
-    els.accessPanel.innerHTML = `<strong>Offener Holonet-Kanal</strong><span>Einheitsbereiche erfordern eine Registerpruefung.</span>`;
+    const unread = state.notifications.filter((note) => !note.read).length;
+    els.accessPanel.innerHTML = `<strong>Offener Holonet-Kanal</strong><span>${unread ? unread + " neue Benachrichtigungen" : "Einheitsbereiche erfordern eine Registerpruefung."}</span>`;
     return;
   }
   els.accessPanel.innerHTML = `<strong>${escapeHtml(unit.name)} Zugriff bestaetigt</strong><span>${escapeHtml(access.callsign)} - Register ${escapeHtml(access.code)}</span>`;
@@ -567,6 +594,12 @@ function renderStats(threads) {
 }
 
 function renderThreads() {
+  if (state.view === "admin") {
+    renderStats([]);
+    els.threadList.innerHTML = "";
+    return;
+  }
+
   if (state.activeUnit !== "Holonet" && (state.category === "Mitgliederakten" || state.category === "Chat")) {
     renderStats([]);
     els.threadList.innerHTML = "";
@@ -613,7 +646,7 @@ function renderThreads() {
 }
 
 function renderMembersPanel() {
-  if (state.activeUnit === "Holonet" || state.category !== "Mitgliederakten") {
+  if (state.view === "admin" || state.activeUnit === "Holonet" || state.category !== "Mitgliederakten") {
     els.membersPanel.innerHTML = "";
     return;
   }
@@ -678,6 +711,12 @@ function renderMembersPanel() {
                         )
                         .join("")}
                     </div>
+                    <div class="record-fields">
+                      <label>Notizen<textarea data-member-note="notes" rows="2">${escapeHtml(member.notes || "")}</textarea></label>
+                      <label>Verwarnungen<textarea data-member-note="warnings" rows="2">${escapeHtml(member.warnings || "")}</textarea></label>
+                      <label>Auszeichnungen<textarea data-member-note="awards" rows="2">${escapeHtml(member.awards || "")}</textarea></label>
+                      <label>Einsatzhistorie<textarea data-member-note="history" rows="2">${escapeHtml(member.history || "")}</textarea></label>
+                    </div>
                     <div class="action-row">
                       ${canPromoteMembers() ? `<button class="chip-button" data-member-action="promote" type="button">Befoerdern</button>` : ""}
                       ${canPromoteMembers() ? `<button class="chip-button" data-member-action="demote" type="button">Degradieren</button>` : ""}
@@ -694,7 +733,7 @@ function renderMembersPanel() {
 }
 
 function renderChatPanel() {
-  if (state.activeUnit === "Holonet" || state.category !== "Chat") {
+  if (state.view === "admin" || state.activeUnit === "Holonet" || state.category !== "Chat") {
     els.chatPanel.innerHTML = "";
     return;
   }
@@ -734,6 +773,76 @@ function renderChatPanel() {
   `;
 }
 
+async function loadAdminUsers() {
+  if (state.account?.role !== "owner") return;
+  const response = await apiFetch("./api/admin/users", { cache: "no-store" });
+  if (!response.ok) return;
+  const payload = await response.json();
+  state.adminUsers = payload.users || [];
+}
+
+function renderAdminPanel() {
+  if (state.view !== "admin") {
+    els.adminPanel.innerHTML = "";
+    return;
+  }
+
+  if (state.account?.role !== "owner") {
+    els.adminPanel.innerHTML = `<div class="empty-state">Adminbereich nur fuer Owner.</div>`;
+    return;
+  }
+
+  els.adminPanel.innerHTML = `
+    <div class="admin-header">
+      <strong>Admin Dashboard</strong>
+      <button class="chip-button" id="refreshAdminButton" type="button">Aktualisieren</button>
+    </div>
+    <div class="admin-grid">
+      ${state.adminUsers
+        .map(
+          (user) => `
+            <article class="admin-card" data-user-id="${user.id}">
+              <header>
+                <div>
+                  <h3>${escapeHtml(user.rpName || user.username)}</h3>
+                  <span>${escapeHtml(user.discordUsername)} - ${escapeHtml(user.ctNumber || "keine CT")}</span>
+                </div>
+                <strong>${escapeHtml(user.status)}</strong>
+              </header>
+              <div class="admin-row">
+                <label>Status
+                  <select data-admin-field="status">
+                    ${["pending", "approved", "blocked"].map((status) => `<option value="${status}" ${user.status === status ? "selected" : ""}>${status}</option>`).join("")}
+                  </select>
+                </label>
+                <label>Rolle
+                  <select data-admin-field="role">
+                    ${["member", "owner"].map((role) => `<option value="${role}" ${user.role === role ? "selected" : ""}>${role}</option>`).join("")}
+                  </select>
+                </label>
+              </div>
+              <div class="unit-access-list">
+                ${units
+                  .filter((unit) => !unit.public)
+                  .map(
+                    (unit) => `
+                      <label>
+                        <input type="checkbox" data-admin-unit="${unit.id}" ${user.unitAccess?.includes(unit.id) ? "checked" : ""} />
+                        ${unit.name}
+                      </label>
+                    `
+                  )
+                  .join("")}
+              </div>
+              <button class="primary-button" data-admin-save type="button">Speichern</button>
+            </article>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function renderDetail() {
   const thread = state.threads.find((item) => item.id === state.selectedThreadId);
   if (!thread) return;
@@ -769,6 +878,7 @@ function renderAll() {
   renderNav();
   renderMembersPanel();
   renderChatPanel();
+  renderAdminPanel();
   renderThreads();
 }
 
@@ -814,6 +924,7 @@ function changeMemberRank(memberId, direction) {
     return { ...member, rankCode: ranks[nextIndex].code };
   });
   setMembers(state.activeUnit, members);
+  addNotification("Rang geaendert", `${state.activeUnit}: Personalakte wurde ${direction < 0 ? "befoerdert" : "degradiert"}.`);
   renderMembersPanel();
 }
 
@@ -911,7 +1022,16 @@ function bindEvents() {
     }
 
     const checkbox = event.target.closest('input[type="checkbox"][data-training]');
-    if (!checkbox) return;
+    if (!checkbox) {
+      const noteField = event.target.closest("[data-member-note]");
+      if (!noteField) return;
+      if (!canManageRecords()) return;
+      const card = event.target.closest(".member-card");
+      const field = noteField.dataset.memberNote;
+      const members = getMembers().map((member) => (member.id === card.dataset.memberId ? { ...member, [field]: noteField.value } : member));
+      setMembers(state.activeUnit, members);
+      return;
+    }
     if (!canManageRecords()) {
       checkbox.checked = !checkbox.checked;
       return;
@@ -954,6 +1074,31 @@ function bindEvents() {
     deleteChatMessage(button.dataset.chatDelete);
   });
 
+  els.adminPanel.addEventListener("click", async (event) => {
+    if (event.target.closest("#refreshAdminButton")) {
+      await loadAdminUsers();
+      renderAdminPanel();
+      return;
+    }
+
+    const saveButton = event.target.closest("[data-admin-save]");
+    if (!saveButton) return;
+    const card = event.target.closest(".admin-card");
+    const id = card.dataset.userId;
+    const status = card.querySelector('[data-admin-field="status"]').value;
+    const role = card.querySelector('[data-admin-field="role"]').value;
+    const unitAccess = [...card.querySelectorAll("[data-admin-unit]:checked")].map((input) => input.dataset.adminUnit);
+    const response = await apiFetch(`./api/admin/users/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status, role, unitAccess })
+    });
+    if (response.ok) {
+      await loadAdminUsers();
+      renderAdminPanel();
+    }
+  });
+
   els.memberForm.addEventListener("submit", (event) => {
     event.preventDefault();
     if (!canManageRecords()) return;
@@ -964,6 +1109,10 @@ function bindEvents() {
       serial: els.memberSerial.value.trim(),
       rankCode: els.memberRank.value,
       trainings: trainingTemplates.map((name) => ({ name, done: false })),
+      notes: "",
+      warnings: "",
+      awards: "",
+      history: "",
       createdAt: Date.now()
     });
     setMembers(state.activeUnit, members);
@@ -1123,9 +1272,13 @@ function bindEvents() {
   });
 
   els.navItems.forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       state.view = button.dataset.view;
+      if (state.view === "admin") await loadAdminUsers();
       renderNav();
+      renderAdminPanel();
+      renderMembersPanel();
+      renderChatPanel();
       renderThreads();
     });
   });
@@ -1145,8 +1298,16 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=15").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=16").catch(() => {});
   }
+
+  setInterval(async () => {
+    if (!backendAvailable || !authToken || state.view === "admin") return;
+    const activeElement = document.activeElement;
+    if (activeElement && ["INPUT", "TEXTAREA", "SELECT"].includes(activeElement.tagName)) return;
+    await loadState();
+    renderAll();
+  }, 7000);
 }
 
 boot();

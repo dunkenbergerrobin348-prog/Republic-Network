@@ -441,12 +441,24 @@ select:focus {
   transform: translateX(-50%);
   width: min(100%, 460px);
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
   padding: 8px 12px max(8px, env(safe-area-inset-bottom));
   background: rgba(4, 10, 24, 0.92);
   border-top: 1px solid var(--line);
   backdrop-filter: blur(14px);
+}
+
+.admin-nav {
+  display: none;
+}
+
+.is-owner .admin-nav {
+  display: grid;
+}
+
+body:not(.is-owner) .bottom-nav {
+  grid-template-columns: repeat(3, 1fr);
 }
 
 .nav-item {
@@ -693,6 +705,99 @@ dialog::backdrop {
 .training-item input {
   width: 18px;
   min-height: 18px;
+  accent-color: var(--brand);
+}
+
+.record-fields {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.record-fields label {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.record-fields textarea {
+  margin-top: 5px;
+  min-height: 62px;
+}
+
+.admin-panel {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.admin-header,
+.admin-card {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(9, 18, 38, 0.82);
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-header strong,
+.admin-card h3 {
+  color: var(--brand);
+}
+
+.admin-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.admin-card h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.admin-card header span,
+.admin-card header strong {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.admin-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.admin-row label,
+.unit-access-list label {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.unit-access-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.unit-access-list input {
+  width: 16px;
+  min-height: 16px;
+  margin-right: 5px;
   accent-color: var(--brand);
 }
 

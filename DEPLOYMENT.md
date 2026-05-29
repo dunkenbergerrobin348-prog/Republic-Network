@@ -117,6 +117,8 @@ _headers
 
 Beim ersten Oeffnen nach dem Deploy erscheint ein Setup-Login. Dort erstellst du den ersten Owner-Account. Danach muessen sich Nutzer vor der App anmelden.
 
+Neue Nutzer koennen sich selbst registrieren. Sie bleiben zuerst auf `pending`, bis ein Owner sie im Admin-Dashboard freischaltet und Einheiten zuweist.
+
 ## Wichtige Einschraenkung
 
 Das Backend speichert gemeinsame Daten in SQLite und Accounts mit Passwort-Hashing. Die Einheits-Registerpruefung bleibt zusaetzlich ein RP-System innerhalb der App.

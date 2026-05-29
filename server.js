@@ -41,6 +41,8 @@ db.exec(`
     ct_number TEXT NOT NULL DEFAULT '',
     rp_name_2 TEXT NOT NULL DEFAULT '',
     rp_name_3 TEXT NOT NULL DEFAULT '',
+    account_status TEXT NOT NULL DEFAULT 'pending',
+    unit_access TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -58,7 +60,9 @@ for (const migration of [
   "ALTER TABLE users ADD COLUMN rp_name TEXT NOT NULL DEFAULT ''",
   "ALTER TABLE users ADD COLUMN ct_number TEXT NOT NULL DEFAULT ''",
   "ALTER TABLE users ADD COLUMN rp_name_2 TEXT NOT NULL DEFAULT ''",
-  "ALTER TABLE users ADD COLUMN rp_name_3 TEXT NOT NULL DEFAULT ''"
+  "ALTER TABLE users ADD COLUMN rp_name_3 TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN account_status TEXT NOT NULL DEFAULT 'pending'",
+  "ALTER TABLE users ADD COLUMN unit_access TEXT NOT NULL DEFAULT '[]'"
 ]) {
   try {
     db.exec(migration);
@@ -116,7 +120,9 @@ function sanitizeUser(user) {
     rpName: user.rp_name || user.username,
     ctNumber: user.ct_number || "",
     rpName2: user.rp_name_2 || "",
-    rpName3: user.rp_name_3 || ""
+    rpName3: user.rp_name_3 || "",
+    status: user.account_status || "pending",
+    unitAccess: JSON.parse(user.unit_access || "[]")
   };
 }
 
@@ -128,7 +134,7 @@ function getAuthUser(request) {
   const row = db
     .prepare(
       `
-        SELECT users.id, users.username, users.role, users.discord_username, users.rp_name, users.ct_number, users.rp_name_2, users.rp_name_3
+        SELECT users.id, users.username, users.role, users.discord_username, users.rp_name, users.ct_number, users.rp_name_2, users.rp_name_3, users.account_status, users.unit_access
         FROM sessions
         JOIN users ON users.id = sessions.user_id
         WHERE sessions.token = ? AND sessions.expires_at > CURRENT_TIMESTAMP
@@ -143,6 +149,26 @@ function requireAuth(request, response) {
   const user = getAuthUser(request);
   if (!user) {
     sendJson(response, 401, { ok: false, error: "Login erforderlich" });
+    return null;
+  }
+  return user;
+}
+
+function requireApproved(request, response) {
+  const user = requireAuth(request, response);
+  if (!user) return null;
+  if (user.role !== "owner" && user.account_status !== "approved") {
+    sendJson(response, 403, { ok: false, error: "Account wartet auf Freischaltung" });
+    return null;
+  }
+  return user;
+}
+
+function requireOwner(request, response) {
+  const user = requireAuth(request, response);
+  if (!user) return null;
+  if (user.role !== "owner") {
+    sendJson(response, 403, { ok: false, error: "Owner-Rechte erforderlich" });
     return null;
   }
   return user;
@@ -171,6 +197,7 @@ function saveState(payload) {
     threads: Array.isArray(payload.threads) ? payload.threads : [],
     members: payload.members && typeof payload.members === "object" ? payload.members : {},
     chats: payload.chats && typeof payload.chats === "object" ? payload.chats : {},
+    notifications: Array.isArray(payload.notifications) ? payload.notifications : [],
     owners: payload.owners && typeof payload.owners === "object" ? payload.owners : {},
     permissions: payload.permissions && typeof payload.permissions === "object" ? payload.permissions : {}
   };
@@ -222,8 +249,8 @@ async function handleApi(request, response, pathname) {
       const result = db
         .prepare(
           `
-            INSERT INTO users (username, password_salt, password_hash, role, discord_username, rp_name, ct_number, rp_name_2, rp_name_3)
-            VALUES (?, ?, ?, 'owner', ?, ?, ?, ?, ?)
+            INSERT INTO users (username, password_salt, password_hash, role, discord_username, rp_name, ct_number, rp_name_2, rp_name_3, account_status, unit_access)
+            VALUES (?, ?, ?, 'owner', ?, ?, ?, ?, ?, 'approved', ?)
           `
         )
         .run(
@@ -234,7 +261,8 @@ async function handleApi(request, response, pathname) {
           rpName,
           ctNumber,
           String(payload.rpName2 || "").trim(),
-          String(payload.rpName3 || "").trim()
+          String(payload.rpName3 || "").trim(),
+          JSON.stringify(["212th", "501st", "91st", "Fleet Crew", "5th", "Flottensicherheit"])
         );
       const user = db.prepare("SELECT * FROM users WHERE id = ?").get(result.lastInsertRowid);
       sendJson(response, 200, { ok: true, token: createSession(user.id), user: sanitizeUser(user) });
@@ -262,8 +290,8 @@ async function handleApi(request, response, pathname) {
       const result = db
         .prepare(
           `
-            INSERT INTO users (username, password_salt, password_hash, role, discord_username, rp_name, ct_number, rp_name_2, rp_name_3)
-            VALUES (?, ?, ?, 'member', ?, ?, ?, ?, ?)
+            INSERT INTO users (username, password_salt, password_hash, role, discord_username, rp_name, ct_number, rp_name_2, rp_name_3, account_status, unit_access)
+            VALUES (?, ?, ?, 'member', ?, ?, ?, ?, ?, 'pending', '[]')
           `
         )
         .run(
@@ -310,14 +338,46 @@ async function handleApi(request, response, pathname) {
     return true;
   }
 
+  if (pathname === "/api/admin/users" && request.method === "GET") {
+    if (!requireOwner(request, response)) return true;
+    const users = db
+      .prepare("SELECT id, username, role, discord_username, rp_name, ct_number, rp_name_2, rp_name_3, account_status, unit_access, created_at FROM users ORDER BY created_at DESC")
+      .all()
+      .map(sanitizeUser);
+    sendJson(response, 200, { ok: true, users });
+    return true;
+  }
+
+  const userMatch = pathname.match(/^\/api\/admin\/users\/(\d+)$/);
+  if (userMatch && request.method === "PATCH") {
+    if (!requireOwner(request, response)) return true;
+    try {
+      const id = Number(userMatch[1]);
+      const payload = await readJsonBody(request);
+      const current = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+      if (!current) {
+        sendJson(response, 404, { ok: false, error: "Nutzer nicht gefunden" });
+        return true;
+      }
+      const role = payload.role === "owner" ? "owner" : "member";
+      const status = ["pending", "approved", "blocked"].includes(payload.status) ? payload.status : current.account_status;
+      const unitAccess = Array.isArray(payload.unitAccess) ? payload.unitAccess : JSON.parse(current.unit_access || "[]");
+      db.prepare("UPDATE users SET role = ?, account_status = ?, unit_access = ? WHERE id = ?").run(role, status, JSON.stringify(unitAccess), id);
+      sendJson(response, 200, { ok: true, user: sanitizeUser(db.prepare("SELECT * FROM users WHERE id = ?").get(id)) });
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
   if (pathname === "/api/state" && request.method === "GET") {
-    if (!requireAuth(request, response)) return true;
+    if (!requireApproved(request, response)) return true;
     sendJson(response, 200, { ok: true, state: getState() });
     return true;
   }
 
   if (pathname === "/api/state" && request.method === "PUT") {
-    if (!requireAuth(request, response)) return true;
+    if (!requireApproved(request, response)) return true;
     try {
       const payload = await readJsonBody(request);
       sendJson(response, 200, { ok: true, state: saveState(payload) });
