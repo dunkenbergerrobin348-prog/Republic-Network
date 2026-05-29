@@ -40,6 +40,13 @@ const fleetRanks = [
 ];
 
 const trainingTemplates = ["Grundausbildung", "Funkdisziplin", "Taktiktraining", "Sanitaetskunde", "Techniklehrgang", "Fuehrungsfreigabe"];
+const memberBoardColumns = [
+  { id: "inbox", title: "Akteneingang" },
+  { id: "training", title: "Ausbildung" },
+  { id: "active", title: "Aktiv" },
+  { id: "reserve", title: "Reserve" }
+];
+const labelPalette = ["Front", "Ausbildung", "Fuehrung", "Medizin", "Technik", "Disziplin", "Befoerderung", "Beobachten"];
 const ownerCode = "OWNER-ROOT";
 
 const seedThreads = [
@@ -132,6 +139,7 @@ const state = {
   access: {},
   members: {},
   chats: {},
+  memberTemplates: {},
   notifications: [],
   wikiPages: {},
   applications: [],
@@ -190,6 +198,10 @@ const els = {
   memberName: document.querySelector("#memberName"),
   memberSerial: document.querySelector("#memberSerial"),
   memberRank: document.querySelector("#memberRank"),
+  memberTemplate: document.querySelector("#memberTemplate"),
+  memberStatus: document.querySelector("#memberStatus"),
+  memberLabels: document.querySelector("#memberLabels"),
+  memberTrainings: document.querySelector("#memberTrainings"),
   accessDialog: document.querySelector("#accessDialog"),
   accessForm: document.querySelector("#accessForm"),
   accessTitle: document.querySelector("#accessTitle"),
@@ -335,6 +347,7 @@ async function loadState() {
       state.threads = shared?.threads || seedThreads;
       state.members = shared?.members || {};
       state.chats = shared?.chats || {};
+      state.memberTemplates = shared?.memberTemplates || {};
       state.notifications = shared?.notifications || [];
       state.wikiPages = shared?.wikiPages || {};
       state.applications = shared?.applications || [];
@@ -353,6 +366,7 @@ async function loadState() {
     state.threads = parsed.threads || seedThreads;
     state.members = parsed.members || {};
     state.chats = parsed.chats || {};
+    state.memberTemplates = parsed.memberTemplates || {};
     state.notifications = parsed.notifications || [];
     state.wikiPages = parsed.wikiPages || {};
     state.applications = parsed.applications || [];
@@ -379,6 +393,7 @@ function saveState() {
       threads: state.threads,
       members: state.members,
       chats: state.chats,
+      memberTemplates: state.memberTemplates,
       notifications: state.notifications,
       wikiPages: state.wikiPages,
       applications: state.applications,
@@ -396,6 +411,7 @@ function saveState() {
       threads: state.threads,
       members: state.members,
       chats: state.chats,
+      memberTemplates: state.memberTemplates,
       notifications: state.notifications,
       wikiPages: state.wikiPages,
       applications: state.applications,
@@ -440,6 +456,24 @@ function getMembers(unitId = state.activeUnit) {
   return state.members[unitId] || [];
 }
 
+function getMemberTemplates(unitId = state.activeUnit) {
+  state.memberTemplates[unitId] ||= [
+    {
+      id: crypto.randomUUID(),
+      name: "Standard Personalakte",
+      rankCode: getFlatRanks(unitId).at(-1)?.code || "C",
+      status: "inbox",
+      labels: ["Ausbildung"],
+      trainings: trainingTemplates.map((name) => ({ name, done: false })),
+      notes: "Grunddaten pruefen und Einweisung terminieren.",
+      warnings: "",
+      awards: "",
+      history: ""
+    }
+  ];
+  return state.memberTemplates[unitId];
+}
+
 function getChatMessages(unitId = state.activeUnit) {
   return state.chats[unitId] || [];
 }
@@ -447,6 +481,26 @@ function getChatMessages(unitId = state.activeUnit) {
 function setMembers(unitId, members) {
   state.members[unitId] = members;
   saveState();
+}
+
+function setMemberTemplates(unitId, templates) {
+  state.memberTemplates[unitId] = templates;
+  saveState();
+}
+
+function normalizeTrainings(member, unitId = state.activeUnit) {
+  const trainings = Array.isArray(member.trainings) ? member.trainings : [];
+  const merged = [...trainings];
+  trainingTemplates.forEach((name) => {
+    if (!merged.some((training) => training.name === name)) merged.push({ name, done: false });
+  });
+  return {
+    ...member,
+    status: member.status || "active",
+    labels: Array.isArray(member.labels) ? member.labels : [],
+    trainings: merged,
+    rankCode: member.rankCode || getFlatRanks(unitId).at(-1)?.code || "C"
+  };
 }
 
 function setChatMessages(unitId, messages) {
@@ -476,6 +530,31 @@ function deleteChatMessage(messageId) {
   );
   renderChatPanel();
   renderStats([]);
+}
+
+function parseList(value) {
+  return value
+    .split(/\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+function createMemberFromTemplate(template, name, serial) {
+  return {
+    id: crypto.randomUUID(),
+    name,
+    serial,
+    rankCode: template.rankCode || getFlatRanks(state.activeUnit).at(-1)?.code || "C",
+    status: template.status || "inbox",
+    labels: Array.isArray(template.labels) ? [...template.labels] : [],
+    trainings: (template.trainings || trainingTemplates.map((training) => ({ name: training, done: false }))).map((training) => ({ ...training, done: Boolean(training.done) })),
+    notes: template.notes || "",
+    warnings: template.warnings || "",
+    awards: template.awards || "",
+    history: template.history || "",
+    createdAt: Date.now()
+  };
 }
 
 function clearSeedData() {
@@ -645,6 +724,13 @@ function renderMemberRankOptions() {
     .join("");
 }
 
+function renderMemberTemplateOptions() {
+  if (!els.memberTemplate) return;
+  els.memberTemplate.innerHTML = `<option value="">Ohne Vorlage</option>${getMemberTemplates()
+    .map((template) => `<option value="${template.id}">${escapeHtml(template.name)}</option>`)
+    .join("")}`;
+}
+
 function renderStats(threads) {
   const memberMode = state.activeUnit !== "Holonet" && state.category === "Mitgliederakten";
   const chatMode = state.activeUnit !== "Holonet" && state.category === "Chat";
@@ -716,7 +802,9 @@ function renderMembersPanel() {
     return;
   }
 
-  const members = getMembers();
+  const members = getMembers().map((member) => normalizeTrainings(member));
+  if (JSON.stringify(members) !== JSON.stringify(getMembers())) state.members[state.activeUnit] = members;
+  const templates = getMemberTemplates();
   const rankMap = Object.fromEntries(getFlatRanks(state.activeUnit).map((rank) => [rank.code, rank]));
   const rights = getUserPermissions();
   const permissionMap = state.permissions[state.activeUnit] || {};
@@ -725,7 +813,7 @@ function renderMembersPanel() {
     <div class="members-header">
       <div>
         <strong>${escapeHtml(state.activeUnit)} Mitgliederliste</strong>
-        <span>${members.length} aktive Personalakten - ${isOwner() ? "Owner-Konsole aktiv" : "Rechte: Akten " + (rights.records ? "ja" : "nein") + ", Rang " + (rights.promote ? "ja" : "nein")}</span>
+        <span>${members.length} Personalakten - Board, Labels, Vorlagen und Fortbildungen</span>
       </div>
       ${canManageRecords() ? `<button class="chip-button" id="addMemberButton" type="button">Akte +</button>` : ""}
     </div>
@@ -766,60 +854,133 @@ function renderMembersPanel() {
         : ""
     }
     ${
+      canManageRecords()
+        ? `<section class="template-panel">
+            <header>
+              <div>
+                <strong>Vorgemerkte Karteikarten</strong>
+                <span>Vorlagen kopieren oder aus bestehenden Akten sichern.</span>
+              </div>
+            </header>
+            <div class="template-strip">
+              ${templates
+                .map(
+                  (template) => `
+                    <article class="template-card" data-template-id="${template.id}">
+                      <strong>${escapeHtml(template.name)}</strong>
+                      <span>${escapeHtml(rankLabel(rankMap[template.rankCode] || getFlatRanks(state.activeUnit).at(-1)))}</span>
+                      <div class="label-row">${(template.labels || []).map((label) => `<small class="member-label">${escapeHtml(label)}</small>`).join("")}</div>
+                      <button class="chip-button" data-template-copy="${template.id}" type="button">Kopieren</button>
+                    </article>
+                  `
+                )
+                .join("")}
+            </div>
+            <form class="template-form" id="templateForm">
+              <input id="templateName" required maxlength="36" placeholder="Vorlagenname" />
+              <input id="templateLabels" maxlength="80" placeholder="Labels, z.B. Medic, ARC, Beobachten" />
+              <textarea id="templateTrainings" rows="3" maxlength="260" placeholder="Fortbildungen, eine pro Zeile"></textarea>
+              <button class="primary-button" type="submit">Vorlage anlegen</button>
+            </form>
+          </section>`
+        : ""
+    }
+    ${
       members.length
-        ? `<div class="member-grid">
-            ${members
-              .map((member) => {
-                const rank = rankMap[member.rankCode] || getFlatRanks(state.activeUnit).at(-1);
+        ? `<div class="member-board">
+            ${memberBoardColumns
+              .map((column) => {
+                const columnMembers = members.filter((member) => member.status === column.id);
                 return `
-                  <article class="member-card dossier" data-member-id="${member.id}">
-                    <header>
-                      <div>
-                        <h3>${escapeHtml(member.name)}</h3>
-                        <span>${escapeHtml(member.serial)} - ${escapeHtml(rankLabel(rank))}</span>
-                      </div>
-                      <b>AKTIV</b>
-                    </header>
-                    <div class="training-list">
-                      ${member.trainings
-                        .map(
-                          (training) => `
-                            <label class="training-item">
-                              <input type="checkbox" data-training="${escapeHtml(training.name)}" ${training.done ? "checked" : ""} />
-                              <span>${escapeHtml(training.name)}</span>
-                            </label>
-                          `
-                        )
-                        .join("")}
-                    </div>
-                    <div class="record-fields">
-                      <label>Notizen<textarea data-member-note="notes" rows="2">${escapeHtml(member.notes || "")}</textarea></label>
-                      <label>Verwarnungen<textarea data-member-note="warnings" rows="2">${escapeHtml(member.warnings || "")}</textarea></label>
-                      <label>Auszeichnungen<textarea data-member-note="awards" rows="2">${escapeHtml(member.awards || "")}</textarea></label>
-                      <label>Einsatzhistorie<textarea data-member-note="history" rows="2">${escapeHtml(member.history || "")}</textarea></label>
-                    </div>
-                    <div class="rank-history">
-                      <strong>Ranghistorie</strong>
+                  <section class="member-column">
+                    <header><strong>${column.title}</strong><span>${columnMembers.length}</span></header>
+                    <div class="member-column-list">
                       ${
-                        member.rankHistory?.length
-                          ? member.rankHistory
-                              .slice()
-                              .reverse()
-                              .map((entry) => `<span>${formatTime(entry.createdAt)} - ${escapeHtml(entry.from)} -> ${escapeHtml(entry.to)} durch ${escapeHtml(entry.actor)}</span>`)
+                        columnMembers.length
+                          ? columnMembers
+                              .map((member) => {
+                                const rank = rankMap[member.rankCode] || getFlatRanks(state.activeUnit).at(-1);
+                                return `
+                                  <article class="member-card dossier" data-member-id="${member.id}">
+                                    <header>
+                                      <div>
+                                        <h3>${escapeHtml(member.name)}</h3>
+                                        <span>${escapeHtml(member.serial)} - ${escapeHtml(rankLabel(rank))}</span>
+                                      </div>
+                                      <b>${escapeHtml(column.title)}</b>
+                                    </header>
+                                    <div class="label-row">
+                                      ${member.labels.map((label) => `<small class="member-label">${escapeHtml(label)}</small>`).join("")}
+                                    </div>
+                                    ${
+                                      canManageRecords()
+                                        ? `<label class="compact-field">Spalte
+                                            <select data-member-status>
+                                              ${memberBoardColumns.map((option) => `<option value="${option.id}" ${member.status === option.id ? "selected" : ""}>${option.title}</option>`).join("")}
+                                            </select>
+                                          </label>`
+                                        : ""
+                                    }
+                                    <div class="training-list">
+                                      ${member.trainings
+                                        .map(
+                                          (training) => `
+                                            <label class="training-item">
+                                              <input type="checkbox" data-training="${escapeHtml(training.name)}" ${training.done ? "checked" : ""} />
+                                              <span>${escapeHtml(training.name)}</span>
+                                            </label>
+                                          `
+                                        )
+                                        .join("")}
+                                    </div>
+                                    ${
+                                      canManageRecords()
+                                        ? `<form class="inline-add-form" data-training-form>
+                                            <input maxlength="48" placeholder="Fortbildung manuell eintragen" />
+                                            <button class="chip-button" type="submit">+</button>
+                                          </form>
+                                          <form class="inline-add-form" data-label-form>
+                                            <input maxlength="24" placeholder="Label hinzufuegen" list="labelOptions" />
+                                            <button class="chip-button" type="submit">+</button>
+                                          </form>`
+                                        : ""
+                                    }
+                                    <div class="record-fields">
+                                      <label>Notizen<textarea data-member-note="notes" rows="2">${escapeHtml(member.notes || "")}</textarea></label>
+                                      <label>Verwarnungen<textarea data-member-note="warnings" rows="2">${escapeHtml(member.warnings || "")}</textarea></label>
+                                      <label>Auszeichnungen<textarea data-member-note="awards" rows="2">${escapeHtml(member.awards || "")}</textarea></label>
+                                      <label>Einsatzhistorie<textarea data-member-note="history" rows="2">${escapeHtml(member.history || "")}</textarea></label>
+                                    </div>
+                                    <div class="rank-history">
+                                      <strong>Ranghistorie</strong>
+                                      ${
+                                        member.rankHistory?.length
+                                          ? member.rankHistory
+                                              .slice()
+                                              .reverse()
+                                              .map((entry) => `<span>${formatTime(entry.createdAt)} - ${escapeHtml(entry.from)} -> ${escapeHtml(entry.to)} durch ${escapeHtml(entry.actor)}</span>`)
+                                              .join("")
+                                          : `<span>Keine Rangbewegungen.</span>`
+                                      }
+                                    </div>
+                                    <div class="action-row">
+                                      ${canManageRecords() ? `<button class="chip-button" data-member-action="template" type="button">Als Vorlage</button>` : ""}
+                                      ${canPromoteMembers() ? `<button class="chip-button" data-member-action="promote" type="button">Befoerdern</button>` : ""}
+                                      ${canPromoteMembers() ? `<button class="chip-button" data-member-action="demote" type="button">Degradieren</button>` : ""}
+                                      ${canManageRecords() ? `<button class="chip-button danger" data-member-action="delete" type="button">Akte loeschen</button>` : ""}
+                                    </div>
+                                  </article>
+                                `;
+                              })
                               .join("")
-                          : `<span>Keine Rangbewegungen.</span>`
+                          : `<div class="empty-column">Keine Akten.</div>`
                       }
                     </div>
-                    <div class="action-row">
-                      ${canPromoteMembers() ? `<button class="chip-button" data-member-action="promote" type="button">Befoerdern</button>` : ""}
-                      ${canPromoteMembers() ? `<button class="chip-button" data-member-action="demote" type="button">Degradieren</button>` : ""}
-                      ${canManageRecords() ? `<button class="chip-button danger" data-member-action="delete" type="button">Akte loeschen</button>` : ""}
-                    </div>
-                  </article>
+                  </section>
                 `;
               })
               .join("")}
-          </div>`
+          </div><datalist id="labelOptions">${labelPalette.map((label) => `<option value="${label}"></option>`).join("")}</datalist>`
         : `<div class="empty-state">Noch keine Personalakten fuer diese Einheit.</div>`
     }
   `;
@@ -1221,8 +1382,25 @@ function bindEvents() {
     if (event.target.closest("#addMemberButton")) {
       if (!canManageRecords()) return;
       renderMemberRankOptions();
+      renderMemberTemplateOptions();
       els.memberForm.reset();
+      els.memberStatus.value = "inbox";
+      els.memberTrainings.value = trainingTemplates.join("\n");
       els.memberDialog.showModal();
+      return;
+    }
+
+    const templateCopyButton = event.target.closest("[data-template-copy]");
+    if (templateCopyButton) {
+      if (!canManageRecords()) return;
+      const template = getMemberTemplates().find((item) => item.id === templateCopyButton.dataset.templateCopy);
+      if (!template) return;
+      const name = prompt("Rufname fuer die neue Akte?");
+      if (!name) return;
+      const serial = prompt("Dienstnummer?");
+      if (!serial) return;
+      setMembers(state.activeUnit, [createMemberFromTemplate(template, name.trim(), serial.trim()), ...getMembers()]);
+      renderMembersPanel();
       return;
     }
 
@@ -1234,9 +1412,75 @@ function bindEvents() {
       deleteMember(card.dataset.memberId);
       return;
     }
+    if (actionButton.dataset.memberAction === "template") {
+      if (!canManageRecords()) return;
+      const member = getMembers().find((item) => item.id === card.dataset.memberId);
+      if (!member) return;
+      const templateName = prompt("Name fuer die Vorlage?", `${member.name} Vorlage`);
+      if (!templateName) return;
+      const templates = getMemberTemplates();
+      templates.unshift({
+        ...normalizeTrainings(member),
+        id: crypto.randomUUID(),
+        name: templateName.trim()
+      });
+      setMemberTemplates(state.activeUnit, templates.slice(0, 10));
+      renderMembersPanel();
+      return;
+    }
     if (!canPromoteMembers()) return;
     const direction = actionButton.dataset.memberAction === "promote" ? -1 : 1;
     changeMemberRank(card.dataset.memberId, direction);
+  });
+
+  els.membersPanel.addEventListener("submit", (event) => {
+    const templateForm = event.target.closest("#templateForm");
+    const trainingForm = event.target.closest("[data-training-form]");
+    const labelForm = event.target.closest("[data-label-form]");
+    if (!templateForm && !trainingForm && !labelForm) return;
+    event.preventDefault();
+    if (!canManageRecords()) return;
+
+    if (templateForm) {
+      const name = templateForm.querySelector("#templateName").value.trim();
+      const labels = parseList(templateForm.querySelector("#templateLabels").value);
+      const customTrainings = parseList(templateForm.querySelector("#templateTrainings").value);
+      const rankCode = getFlatRanks(state.activeUnit).at(-1)?.code || "C";
+      setMemberTemplates(state.activeUnit, [
+        {
+          id: crypto.randomUUID(),
+          name,
+          rankCode,
+          status: "inbox",
+          labels,
+          trainings: (customTrainings.length ? customTrainings : trainingTemplates).map((item) => ({ name: item, done: false })),
+          notes: "",
+          warnings: "",
+          awards: "",
+          history: ""
+        },
+        ...getMemberTemplates()
+      ].slice(0, 10));
+      renderMembersPanel();
+      return;
+    }
+
+    const card = event.target.closest(".member-card");
+    const input = event.target.querySelector("input");
+    const value = input.value.trim();
+    if (!value) return;
+    const members = getMembers().map((member) => {
+      if (member.id !== card.dataset.memberId) return member;
+      const normalized = normalizeTrainings(member);
+      if (trainingForm) {
+        if (normalized.trainings.some((training) => training.name.toLowerCase() === value.toLowerCase())) return normalized;
+        return { ...normalized, trainings: [...normalized.trainings, { name: value, done: false }] };
+      }
+      if (normalized.labels.some((label) => label.toLowerCase() === value.toLowerCase())) return normalized;
+      return { ...normalized, labels: [...normalized.labels, value].slice(0, 8) };
+    });
+    setMembers(state.activeUnit, members);
+    renderMembersPanel();
   });
 
   els.membersPanel.addEventListener("change", (event) => {
@@ -1255,6 +1499,16 @@ function bindEvents() {
       if (!isOwner()) return;
       const row = event.target.closest(".rights-row");
       setPermission(state.activeUnit, row.dataset.rightsName, rightsCheckbox.dataset.right, rightsCheckbox.checked);
+      renderMembersPanel();
+      return;
+    }
+
+    const statusSelect = event.target.closest("[data-member-status]");
+    if (statusSelect) {
+      if (!canManageRecords()) return;
+      const card = event.target.closest(".member-card");
+      const members = getMembers().map((member) => (member.id === card.dataset.memberId ? { ...member, status: statusSelect.value } : member));
+      setMembers(state.activeUnit, members);
       renderMembersPanel();
       return;
     }
@@ -1405,21 +1659,37 @@ function bindEvents() {
     event.preventDefault();
     if (!canManageRecords()) return;
     const members = getMembers();
-    members.unshift({
-      id: crypto.randomUUID(),
-      name: els.memberName.value.trim(),
-      serial: els.memberSerial.value.trim(),
+    const template = getMemberTemplates().find((item) => item.id === els.memberTemplate.value);
+    const manualTrainings = parseList(els.memberTrainings.value);
+    const baseTemplate = template || {
       rankCode: els.memberRank.value,
-      trainings: trainingTemplates.map((name) => ({ name, done: false })),
+      status: els.memberStatus.value,
+      labels: parseList(els.memberLabels.value),
+      trainings: (manualTrainings.length ? manualTrainings : trainingTemplates).map((name) => ({ name, done: false })),
       notes: "",
       warnings: "",
       awards: "",
-      history: "",
-      createdAt: Date.now()
+      history: ""
+    };
+    members.unshift({
+      ...createMemberFromTemplate(baseTemplate, els.memberName.value.trim(), els.memberSerial.value.trim()),
+      rankCode: els.memberRank.value,
+      status: els.memberStatus.value,
+      labels: parseList(els.memberLabels.value),
+      trainings: (manualTrainings.length ? manualTrainings : baseTemplate.trainings.map((training) => training.name)).map((name) => ({ name, done: false }))
     });
     setMembers(state.activeUnit, members);
     els.memberDialog.close();
     renderMembersPanel();
+  });
+
+  els.memberTemplate?.addEventListener("change", () => {
+    const template = getMemberTemplates().find((item) => item.id === els.memberTemplate.value);
+    if (!template) return;
+    els.memberRank.value = template.rankCode || els.memberRank.value;
+    els.memberStatus.value = template.status || "inbox";
+    els.memberLabels.value = (template.labels || []).join(", ");
+    els.memberTrainings.value = (template.trainings || []).map((training) => training.name).join("\n");
   });
 
   els.tabs.addEventListener("click", (event) => {
@@ -1479,7 +1749,10 @@ function bindEvents() {
     if (state.activeUnit !== "Holonet" && state.category === "Mitgliederakten") {
       if (!canManageRecords()) return;
       renderMemberRankOptions();
+      renderMemberTemplateOptions();
       els.memberForm.reset();
+      els.memberStatus.value = "inbox";
+      els.memberTrainings.value = trainingTemplates.join("\n");
       els.memberDialog.showModal();
       return;
     }
@@ -1615,7 +1888,7 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=20").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=23").catch(() => {});
   }
 
   setInterval(async () => {

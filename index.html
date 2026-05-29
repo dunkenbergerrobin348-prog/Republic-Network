@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#050816" />
     <title>Galactic Forum</title>
-    <link rel="manifest" href="manifest.webmanifest?v=22" />
-    <link rel="stylesheet" href="styles.css?v=22" />
+    <link rel="manifest" href="manifest.webmanifest?v=23" />
+    <link rel="stylesheet" href="styles.css?v=23" />
   </head>
   <body>
     <div class="app-shell">
@@ -181,6 +181,27 @@
           Start-Rang
           <select id="memberRank" required></select>
         </label>
+        <label>
+          Vorlage
+          <select id="memberTemplate"></select>
+        </label>
+        <label>
+          Board-Spalte
+          <select id="memberStatus">
+            <option value="inbox">Akteneingang</option>
+            <option value="training">Ausbildung</option>
+            <option value="active">Aktiv</option>
+            <option value="reserve">Reserve</option>
+          </select>
+        </label>
+        <label>
+          Labels
+          <input id="memberLabels" maxlength="100" placeholder="z.B. Medic, ARC, Beobachten" />
+        </label>
+        <label>
+          Fortbildungen
+          <textarea id="memberTrainings" rows="5" maxlength="360" placeholder="Eine Fortbildung pro Zeile"></textarea>
+        </label>
         <button class="primary-button" type="submit">Akte anlegen</button>
       </form>
     </dialog>
@@ -230,6 +251,6 @@
         }));
       }
     </script>
-    <script src="app.js?v=22"></script>
+    <script src="app.js?v=23"></script>
   </body>
 </html>

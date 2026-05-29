@@ -212,6 +212,7 @@ function saveState(payload) {
     threads: Array.isArray(payload.threads) ? payload.threads : [],
     members: payload.members && typeof payload.members === "object" ? payload.members : {},
     chats: payload.chats && typeof payload.chats === "object" ? payload.chats : {},
+    memberTemplates: payload.memberTemplates && typeof payload.memberTemplates === "object" ? payload.memberTemplates : {},
     notifications: Array.isArray(payload.notifications) ? payload.notifications : [],
     wikiPages: payload.wikiPages && typeof payload.wikiPages === "object" ? payload.wikiPages : {},
     applications: Array.isArray(payload.applications) ? payload.applications : [],

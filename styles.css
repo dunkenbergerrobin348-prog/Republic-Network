@@ -680,6 +680,112 @@ dialog::backdrop {
   gap: 10px;
 }
 
+.template-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(var(--unit-rgb), 0.35);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(var(--unit-rgb), 0.12), transparent 44%),
+    rgba(3, 8, 20, 0.58);
+}
+
+.template-panel header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.template-panel strong {
+  color: var(--brand);
+}
+
+.template-panel span,
+.template-card span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.template-strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(178px, 1fr);
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.template-card {
+  display: grid;
+  gap: 7px;
+  min-width: 178px;
+  padding: 10px;
+  border: 1px solid rgba(139, 172, 210, 0.22);
+  border-radius: 8px;
+  background: rgba(9, 18, 38, 0.72);
+}
+
+.template-form {
+  display: grid;
+  gap: 8px;
+}
+
+.member-board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(282px, 88%);
+  gap: 10px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  scroll-snap-type: x proximity;
+}
+
+.member-column {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 240px;
+  padding: 10px;
+  border: 1px solid rgba(139, 172, 210, 0.22);
+  border-radius: 8px;
+  background: rgba(3, 8, 20, 0.48);
+  scroll-snap-align: start;
+}
+
+.member-column > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--brand);
+}
+
+.member-column > header span {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid rgba(var(--unit-rgb), 0.42);
+  border-radius: 999px;
+  color: var(--unit);
+  font-weight: 900;
+}
+
+.member-column-list {
+  display: grid;
+  gap: 10px;
+}
+
+.empty-column {
+  border: 1px dashed rgba(139, 172, 210, 0.24);
+  border-radius: 8px;
+  padding: 18px 10px;
+  color: var(--muted);
+  text-align: center;
+  background: rgba(9, 18, 38, 0.45);
+}
+
 .rights-panel {
   display: grid;
   gap: 8px;
@@ -782,6 +888,33 @@ dialog::backdrop {
   font-size: 1rem;
 }
 
+.label-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 20px;
+  margin: 8px 0;
+}
+
+.member-label {
+  border: 1px solid rgba(var(--unit-rgb), 0.28);
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: rgba(var(--unit-rgb), 0.12);
+  color: var(--unit);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.compact-field {
+  display: grid;
+  gap: 5px;
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
 .training-list {
   display: grid;
   gap: 7px;
@@ -806,6 +939,17 @@ dialog::backdrop {
   width: 18px;
   min-height: 18px;
   accent-color: var(--brand);
+}
+
+.inline-add-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.inline-add-form input {
+  min-height: 38px;
 }
 
 .record-fields {
