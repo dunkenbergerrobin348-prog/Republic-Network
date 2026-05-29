@@ -540,6 +540,11 @@ select:focus {
   line-height: 1.45;
 }
 
+.load-more-button {
+  justify-self: center;
+  min-width: min(220px, 100%);
+}
+
 .meta-row,
 .tag-row,
 .thread-detail-meta {

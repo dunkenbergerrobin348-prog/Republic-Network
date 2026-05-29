@@ -48,6 +48,7 @@ const memberBoardColumns = [
 ];
 const labelPalette = ["Front", "Ausbildung", "Fuehrung", "Medizin", "Technik", "Disziplin", "Befoerderung", "Beobachten"];
 const ownerCode = "";
+const threadPageSize = 10;
 
 const seedThreads = [
   {
@@ -141,6 +142,7 @@ const state = {
   threadReports: [],
   threadSubscriptions: {},
   readThreads: {},
+  threadLimit: threadPageSize,
   access: {},
   members: {},
   chats: {},
@@ -818,13 +820,13 @@ function getFilteredThreads() {
 
 function normalizeThread(thread) {
   return {
+    ...thread,
     reactions: { Signal: thread.likes || 0, Bestaetigt: 0, Frage: 0, ...(thread.reactions || {}) },
     subscribers: Array.isArray(thread.subscribers) ? thread.subscribers : [],
     reports: Array.isArray(thread.reports) ? thread.reports : [],
     pinned: Boolean(thread.pinned),
     locked: Boolean(thread.locked),
-    editedAt: thread.editedAt || null,
-    ...thread
+    editedAt: thread.editedAt || null
   };
 }
 
@@ -975,13 +977,15 @@ function renderThreads() {
 
   const threads = getFilteredThreads();
   renderStats(threads);
+  const visibleThreads = threads.slice(0, state.threadLimit);
+  const hasMoreThreads = visibleThreads.length < threads.length;
 
   if (!threads.length) {
     els.threadList.innerHTML = `<div class="empty-state">Keine passenden Transmissionen in ${escapeHtml(state.activeUnit)} gefunden.</div>`;
     return;
   }
 
-  els.threadList.innerHTML = threads
+  els.threadList.innerHTML = visibleThreads
     .map(
       (thread) => `
         <article class="thread-card ${thread.pinned ? "pinned" : ""} ${thread.locked ? "locked" : ""} ${state.readThreads[thread.id] ? "" : "unread"}" data-thread-id="${thread.id}">
@@ -1015,7 +1019,7 @@ function renderThreads() {
         </article>
       `
     )
-    .join("");
+    .join("") + (hasMoreThreads ? `<button class="chip-button load-more-button" id="loadMoreThreadsButton" type="button">Mehr laden (${visibleThreads.length}/${threads.length})</button>` : "");
 }
 
 function renderMembersPanel() {
@@ -1868,6 +1872,7 @@ function bindEvents() {
     }
     state.activeUnit = unitId;
     state.category = "Alle";
+    state.threadLimit = threadPageSize;
     renderThreadFormOptions();
     renderAll();
   });
@@ -1878,12 +1883,14 @@ function bindEvents() {
       state.activeUnit = unitButton.dataset.jumpUnit;
       state.category = "Mitgliederakten";
       state.memberSubView = "board";
+      state.threadLimit = threadPageSize;
       renderAll();
       return;
     }
     const viewButton = event.target.closest("[data-jump-view]");
     if (!viewButton) return;
     state.view = viewButton.dataset.jumpView;
+    state.threadLimit = threadPageSize;
     if (state.view === "admin") await loadAdminUsers();
     renderAll();
   });
@@ -1904,6 +1911,7 @@ function bindEvents() {
     state.user.bio = unit.name;
     state.activeUnit = unit.id;
     state.category = "Alle";
+    state.threadLimit = threadPageSize;
     saveState();
     els.accessDialog.close();
     renderThreadFormOptions();
@@ -2563,6 +2571,7 @@ function bindEvents() {
     const button = event.target.closest(".tab");
     if (!button) return;
     state.category = button.dataset.category;
+    state.threadLimit = threadPageSize;
     renderThreadFormOptions();
     renderTabs();
     renderMembersPanel();
@@ -2575,10 +2584,17 @@ function bindEvents() {
 
   els.searchInput.addEventListener("input", (event) => {
     state.query = event.target.value;
+    state.threadLimit = threadPageSize;
     renderThreads();
   });
 
   els.threadList.addEventListener("click", (event) => {
+    if (event.target.closest("#loadMoreThreadsButton")) {
+      state.threadLimit += threadPageSize;
+      renderThreads();
+      return;
+    }
+
     const card = event.target.closest(".thread-card");
     if (!card) return;
     const action = event.target.closest("button")?.dataset.action;
@@ -2614,7 +2630,7 @@ function bindEvents() {
     }
 
     if (action === "delete") {
-      if (!isOwner()) return;
+      if (!(isOwner() || state.account?.role === "admin")) return;
       deleteThread(threadId);
       return;
     }
@@ -2825,6 +2841,7 @@ function bindEvents() {
     button.addEventListener("click", async () => {
       if (button.dataset.view === "admin" && state.account?.role !== "owner") return;
       state.view = button.dataset.view;
+      state.threadLimit = threadPageSize;
       if (state.view === "admin") await loadAdminUsers();
       renderNav();
       renderAdminPanel();
