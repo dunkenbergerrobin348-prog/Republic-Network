@@ -1,5 +1,13 @@
 const publicCategories = ["Alle", "Sektor", "Missionen", "Cantina", "Technik", "Archiv"];
 const unitCategories = ["Alle", "Einheitsbeitrag", "Regeln", "Bewaffnung", "Funkcodes", "Mitgliederakten", "Chat"];
+const defaultCategoryPermissions = {
+  Einheitsbeitrag: "user",
+  Regeln: "admin",
+  Bewaffnung: "admin",
+  Funkcodes: "admin",
+  Chat: "user",
+  Mitgliederakten: "admin"
+};
 
 const units = [
   { id: "Holonet", name: "Holonet", public: true, code: "" },
@@ -485,6 +493,23 @@ function getUserPermissions(unitId = state.activeUnit) {
   return state.permissions[unitId]?.[normalizeName(state.user.name)] || { records: false, promote: false, rights: false };
 }
 
+function roleRank(role) {
+  return { user: 1, member: 1, admin: 2, owner: 3 }[role] || 1;
+}
+
+function getCategoryPermissions(unitId = state.activeUnit) {
+  state.permissions.categoryRules ||= {};
+  state.permissions.categoryRules[unitId] ||= { ...defaultCategoryPermissions };
+  return state.permissions.categoryRules[unitId];
+}
+
+function canCreateInCurrentCategory() {
+  if (state.activeUnit === "Holonet") return true;
+  if (state.category === "Alle") return true;
+  const required = getCategoryPermissions()[state.category] || "user";
+  return roleRank(state.account?.role) >= roleRank(required);
+}
+
 function canManageRecords() {
   return getUserPermissions().records;
 }
@@ -669,6 +694,21 @@ function renderMembersPanel() {
         ? `<section class="rights-panel">
             <strong>Rechteverwaltung</strong>
             <button class="chip-button danger" id="clearSeedDataButton" type="button">Testdaten bereinigen</button>
+            <div class="category-rules">
+              <strong>Thread-Rechte</strong>
+              ${unitCategories
+                .filter((category) => !["Alle", "Mitgliederakten", "Chat"].includes(category))
+                .map(
+                  (category) => `
+                    <label>${category}
+                      <select data-category-rule="${category}">
+                        ${["user", "admin", "owner"].map((role) => `<option value="${role}" ${getCategoryPermissions()[category] === role ? "selected" : ""}>${role}</option>`).join("")}
+                      </select>
+                    </label>
+                  `
+                )
+                .join("")}
+            </div>
             ${members
               .map((member) => {
                 const key = normalizeName(member.name);
@@ -817,7 +857,7 @@ function renderAdminPanel() {
                 </label>
                 <label>Rolle
                   <select data-admin-field="role">
-                    ${["member", "owner"].map((role) => `<option value="${role}" ${user.role === role ? "selected" : ""}>${role}</option>`).join("")}
+                    ${["user", "admin", "owner"].map((role) => `<option value="${role}" ${user.role === role ? "selected" : ""}>${role}</option>`).join("")}
                   </select>
                 </label>
               </div>
@@ -1012,6 +1052,16 @@ function bindEvents() {
   });
 
   els.membersPanel.addEventListener("change", (event) => {
+    const categoryRule = event.target.closest("[data-category-rule]");
+    if (categoryRule) {
+      if (!isOwner()) return;
+      const rules = getCategoryPermissions();
+      rules[categoryRule.dataset.categoryRule] = categoryRule.value;
+      state.permissions.categoryRules[state.activeUnit] = rules;
+      saveState();
+      return;
+    }
+
     const rightsCheckbox = event.target.closest('input[type="checkbox"][data-right]');
     if (rightsCheckbox) {
       if (!isOwner()) return;
@@ -1169,6 +1219,8 @@ function bindEvents() {
   });
 
   els.newThreadButton.addEventListener("click", () => {
+    if (!canCreateInCurrentCategory()) return;
+
     if (state.activeUnit !== "Holonet" && state.category === "Mitgliederakten") {
       if (!canManageRecords()) return;
       renderMemberRankOptions();
@@ -1192,6 +1244,7 @@ function bindEvents() {
 
   els.threadForm.addEventListener("submit", (event) => {
     event.preventDefault();
+    if (!canCreateInCurrentCategory()) return;
     const tags = els.threadTags.value
       .split(",")
       .map((tag) => tag.trim().replace(/^#/, ""))
@@ -1298,7 +1351,7 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=16").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=17").catch(() => {});
   }
 
   setInterval(async () => {

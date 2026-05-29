@@ -34,6 +34,8 @@ Siehe [DEPLOYMENT.md](DEPLOYMENT.md).
 - Login-System mit erstem Owner-Setup
 - Account-Freischaltung und Einheitszuweisung durch Owner
 - Admin-Dashboard fuer Nutzerstatus, Rollen und Einheiten
+- Rollen `user`, `admin`, `owner`
+- Thread-Erstellung pro Einheitskategorie auf User/Admin/Owner begrenzbar
 - Erweiterte Akten mit Notizen, Verwarnungen, Auszeichnungen und Einsatzhistorie
 - Automatische Chat-Aktualisierung
 - PWA-Manifest und Service Worker fuer App-Installation

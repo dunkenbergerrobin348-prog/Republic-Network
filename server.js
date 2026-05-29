@@ -291,7 +291,7 @@ async function handleApi(request, response, pathname) {
         .prepare(
           `
             INSERT INTO users (username, password_salt, password_hash, role, discord_username, rp_name, ct_number, rp_name_2, rp_name_3, account_status, unit_access)
-            VALUES (?, ?, ?, 'member', ?, ?, ?, ?, ?, 'pending', '[]')
+            VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?, 'pending', '[]')
           `
         )
         .run(
@@ -359,7 +359,7 @@ async function handleApi(request, response, pathname) {
         sendJson(response, 404, { ok: false, error: "Nutzer nicht gefunden" });
         return true;
       }
-      const role = payload.role === "owner" ? "owner" : "member";
+      const role = ["user", "admin", "owner"].includes(payload.role) ? payload.role : current.role;
       const status = ["pending", "approved", "blocked"].includes(payload.status) ? payload.status : current.account_status;
       const unitAccess = Array.isArray(payload.unitAccess) ? payload.unitAccess : JSON.parse(current.unit_access || "[]");
       db.prepare("UPDATE users SET role = ?, account_status = ?, unit_access = ? WHERE id = ?").run(role, status, JSON.stringify(unitAccess), id);

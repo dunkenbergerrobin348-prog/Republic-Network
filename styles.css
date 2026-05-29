@@ -639,6 +639,28 @@ dialog::backdrop {
   color: var(--brand);
 }
 
+.category-rules {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 8px;
+  padding: 10px;
+  border: 1px solid rgba(79, 209, 255, 0.24);
+  border-radius: 8px;
+  background: rgba(3, 8, 20, 0.38);
+}
+
+.category-rules strong {
+  color: var(--accent);
+}
+
+.category-rules label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
 .rights-row {
   display: grid;
   grid-template-columns: 1fr auto auto;
