@@ -1528,7 +1528,7 @@ function bindEvents() {
       sessionStorage.setItem("galactic-intro-seen", "1");
     };
     els.skipIntroButton?.addEventListener("click", closeIntro);
-    setTimeout(closeIntro, 4200);
+    setTimeout(closeIntro, 5800);
   } else if (els.introVideo) {
     els.introVideo.classList.add("hidden");
   }
@@ -2246,7 +2246,7 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=24").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=25").catch(() => {});
   }
 
   setInterval(async () => {
