@@ -140,6 +140,12 @@ const state = {
   members: {},
   chats: {},
   memberTemplates: {},
+  memberFilters: { search: "", status: "all", label: "all", training: "all" },
+  activityLogs: {},
+  missionReports: {},
+  announcements: {},
+  memberAudit: [],
+  rankRights: {},
   notifications: [],
   wikiPages: {},
   applications: [],
@@ -193,6 +199,8 @@ const els = {
   wikiPanel: document.querySelector("#wikiPanel"),
   applicationsPanel: document.querySelector("#applicationsPanel"),
   notificationsPanel: document.querySelector("#notificationsPanel"),
+  introVideo: document.querySelector("#introVideo"),
+  skipIntroButton: document.querySelector("#skipIntroButton"),
   memberDialog: document.querySelector("#memberDialog"),
   memberForm: document.querySelector("#memberForm"),
   memberName: document.querySelector("#memberName"),
@@ -348,6 +356,11 @@ async function loadState() {
       state.members = shared?.members || {};
       state.chats = shared?.chats || {};
       state.memberTemplates = shared?.memberTemplates || {};
+      state.activityLogs = shared?.activityLogs || {};
+      state.missionReports = shared?.missionReports || {};
+      state.announcements = shared?.announcements || {};
+      state.memberAudit = shared?.memberAudit || [];
+      state.rankRights = shared?.rankRights || {};
       state.notifications = shared?.notifications || [];
       state.wikiPages = shared?.wikiPages || {};
       state.applications = shared?.applications || [];
@@ -367,6 +380,11 @@ async function loadState() {
     state.members = parsed.members || {};
     state.chats = parsed.chats || {};
     state.memberTemplates = parsed.memberTemplates || {};
+    state.activityLogs = parsed.activityLogs || {};
+    state.missionReports = parsed.missionReports || {};
+    state.announcements = parsed.announcements || {};
+    state.memberAudit = parsed.memberAudit || [];
+    state.rankRights = parsed.rankRights || {};
     state.notifications = parsed.notifications || [];
     state.wikiPages = parsed.wikiPages || {};
     state.applications = parsed.applications || [];
@@ -394,6 +412,11 @@ function saveState() {
       members: state.members,
       chats: state.chats,
       memberTemplates: state.memberTemplates,
+      activityLogs: state.activityLogs,
+      missionReports: state.missionReports,
+      announcements: state.announcements,
+      memberAudit: state.memberAudit,
+      rankRights: state.rankRights,
       notifications: state.notifications,
       wikiPages: state.wikiPages,
       applications: state.applications,
@@ -412,6 +435,11 @@ function saveState() {
       members: state.members,
       chats: state.chats,
       memberTemplates: state.memberTemplates,
+      activityLogs: state.activityLogs,
+      missionReports: state.missionReports,
+      announcements: state.announcements,
+      memberAudit: state.memberAudit,
+      rankRights: state.rankRights,
       notifications: state.notifications,
       wikiPages: state.wikiPages,
       applications: state.applications,
@@ -478,6 +506,21 @@ function getChatMessages(unitId = state.activeUnit) {
   return state.chats[unitId] || [];
 }
 
+function getActivityLogs(unitId = state.activeUnit) {
+  state.activityLogs[unitId] ||= [];
+  return state.activityLogs[unitId];
+}
+
+function getMissionReports(unitId = state.activeUnit) {
+  state.missionReports[unitId] ||= [];
+  return state.missionReports[unitId];
+}
+
+function getAnnouncements(unitId = state.activeUnit) {
+  state.announcements[unitId] ||= [];
+  return state.announcements[unitId];
+}
+
 function setMembers(unitId, members) {
   state.members[unitId] = members;
   saveState();
@@ -540,6 +583,31 @@ function parseList(value) {
     .slice(0, 12);
 }
 
+function serialExists(serial, ignoreId = "") {
+  const normalized = normalizeName(serial);
+  return Object.values(state.members)
+    .flat()
+    .some((member) => member.id !== ignoreId && normalizeName(member.serial || "") === normalized);
+}
+
+function logMemberAudit(action, member, details = "") {
+  state.memberAudit.unshift({
+    id: crypto.randomUUID(),
+    unit: state.activeUnit,
+    action,
+    member: member?.name || "",
+    serial: member?.serial || "",
+    details,
+    actor: state.user.name,
+    createdAt: Date.now()
+  });
+  state.memberAudit = state.memberAudit.slice(0, 160);
+}
+
+function addUnitNotification(title, body, unitId = state.activeUnit) {
+  addNotification(title, body, unitId);
+}
+
 function createMemberFromTemplate(template, name, serial) {
   return {
     id: crypto.randomUUID(),
@@ -563,8 +631,8 @@ function clearSeedData() {
   renderAll();
 }
 
-function addNotification(title, body) {
-  state.notifications.unshift({ id: crypto.randomUUID(), title, body, createdAt: Date.now(), read: false });
+function addNotification(title, body, unit = "Holonet") {
+  state.notifications.unshift({ id: crypto.randomUUID(), title, body, unit, createdAt: Date.now(), read: false });
   state.notifications = state.notifications.slice(0, 60);
   saveState();
 }
@@ -609,7 +677,11 @@ function isOwner(unitId = state.activeUnit) {
 
 function getUserPermissions(unitId = state.activeUnit) {
   if (isOwner(unitId)) return { records: true, promote: true, rights: true };
-  return state.permissions[unitId]?.[normalizeName(state.user.name)] || { records: false, promote: false, rights: false };
+  const direct = state.permissions[unitId]?.[normalizeName(state.user.name)];
+  if (direct) return direct;
+  const member = getMembers(unitId).find((item) => normalizeName(item.name) === normalizeName(state.user.name));
+  const rankRights = member ? state.rankRights[unitId]?.[member.rankCode] : null;
+  return rankRights || { records: false, promote: false, rights: false };
 }
 
 function roleRank(role) {
@@ -687,12 +759,15 @@ function renderUnitTabs() {
 function renderAccessPanel() {
   const unit = getUnit(state.activeUnit);
   const access = state.access[state.activeUnit];
+  const pinned = getAnnouncements(state.activeUnit).slice(0, 2);
   if (unit.public) {
     const unread = state.notifications.filter((note) => !note.read).length;
     els.accessPanel.innerHTML = `<strong>Offener Holonet-Kanal</strong><span>${unread ? unread + " neue Benachrichtigungen" : "Einheitsbereiche erfordern eine Registerpruefung."}</span>`;
     return;
   }
-  els.accessPanel.innerHTML = `<strong>${escapeHtml(unit.name)} Zugriff bestaetigt</strong><span>${escapeHtml(access.callsign)} - Register ${escapeHtml(access.code)}</span>`;
+  els.accessPanel.innerHTML = `<strong>${escapeHtml(unit.name)} Zugriff bestaetigt</strong><span>${escapeHtml(access.callsign)} - Register ${escapeHtml(access.code)}</span>${
+    pinned.length ? `<div class="pinned-stack">${pinned.map((item) => `<p><b>${escapeHtml(item.title)}</b> ${escapeHtml(item.body)}</p>`).join("")}</div>` : ""
+  }`;
 }
 
 function renderTabs() {
@@ -802,9 +877,23 @@ function renderMembersPanel() {
     return;
   }
 
-  const members = getMembers().map((member) => normalizeTrainings(member));
-  if (JSON.stringify(members) !== JSON.stringify(getMembers())) state.members[state.activeUnit] = members;
+  const allMembers = getMembers().map((member) => normalizeTrainings(member));
+  const filter = state.memberFilters;
+  const members = allMembers.filter((member) => {
+    const haystack = [member.name, member.serial, member.rankCode, ...(member.labels || []), member.rpProfile || "", member.specialization || ""].join(" ").toLowerCase();
+    const matchesSearch = !filter.search || haystack.includes(filter.search.toLowerCase());
+    const matchesStatus = filter.status === "all" || member.status === filter.status;
+    const matchesLabel = filter.label === "all" || member.labels?.includes(filter.label);
+    const hasOpenTraining = member.trainings.some((training) => !training.done);
+    const matchesTraining = filter.training === "all" || (filter.training === "open" ? hasOpenTraining : !hasOpenTraining);
+    return matchesSearch && matchesStatus && matchesLabel && matchesTraining;
+  });
+  if (JSON.stringify(allMembers) !== JSON.stringify(getMembers())) state.members[state.activeUnit] = allMembers;
   const templates = getMemberTemplates();
+  const labels = [...new Set(allMembers.flatMap((member) => member.labels || []))];
+  const activities = getActivityLogs();
+  const missions = getMissionReports();
+  const announcements = getAnnouncements();
   const rankMap = Object.fromEntries(getFlatRanks(state.activeUnit).map((rank) => [rank.code, rank]));
   const rights = getUserPermissions();
   const permissionMap = state.permissions[state.activeUnit] || {};
@@ -817,6 +906,60 @@ function renderMembersPanel() {
       </div>
       ${canManageRecords() ? `<button class="chip-button" id="addMemberButton" type="button">Akte +</button>` : ""}
     </div>
+    <section class="command-panel">
+      <div class="member-filters">
+        <input id="memberSearchInput" value="${escapeHtml(filter.search)}" placeholder="Akten suchen: Name, CT, Rang, Label" />
+        <select id="memberStatusFilter">
+          <option value="all">Alle Spalten</option>
+          ${memberBoardColumns.map((column) => `<option value="${column.id}" ${filter.status === column.id ? "selected" : ""}>${column.title}</option>`).join("")}
+        </select>
+        <select id="memberLabelFilter">
+          <option value="all">Alle Labels</option>
+          ${labels.map((label) => `<option value="${escapeHtml(label)}" ${filter.label === label ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}
+        </select>
+        <select id="memberTrainingFilter">
+          <option value="all">Alle Fortbildungen</option>
+          <option value="open" ${filter.training === "open" ? "selected" : ""}>Offene Fortbildungen</option>
+          <option value="done" ${filter.training === "done" ? "selected" : ""}>Alles erledigt</option>
+        </select>
+      </div>
+      <div class="command-grid">
+        <form id="announcementForm" class="mini-form">
+          <strong>Bekanntmachung</strong>
+          <input id="announcementTitle" required maxlength="50" placeholder="Titel" />
+          <textarea id="announcementBody" required maxlength="220" rows="2" placeholder="Befehl oder Hinweis"></textarea>
+          <button class="chip-button" type="submit">Fixieren</button>
+        </form>
+        <form id="missionForm" class="mini-form">
+          <strong>Missionsbericht</strong>
+          <input id="missionTitle" required maxlength="60" placeholder="Mission" />
+          <input id="missionMembers" maxlength="160" placeholder="Teilnehmer, mit Komma getrennt" />
+          <textarea id="missionResult" required maxlength="360" rows="2" placeholder="Ergebnis, besondere Leistungen"></textarea>
+          <button class="chip-button" type="submit">Bericht sichern</button>
+        </form>
+        <form id="activityForm" class="mini-form">
+          <strong>Aktivitaetslog</strong>
+          <input id="activityMember" required maxlength="40" placeholder="Mitglied / CT" />
+          <select id="activityType">
+            <option>Training</option>
+            <option>Mission</option>
+            <option>Abmeldung</option>
+            <option>Verwarnung</option>
+            <option>Befoerderungsantrag</option>
+          </select>
+          <textarea id="activityNote" required maxlength="240" rows="2" placeholder="Eintrag / Begruendung"></textarea>
+          <button class="chip-button" type="submit">Eintragen</button>
+        </form>
+      </div>
+      <div class="command-lists">
+        <div><strong>Fixiert</strong>${announcements.length ? announcements.slice(0, 3).map((item) => `<p>${escapeHtml(item.title)} - ${escapeHtml(item.body)}</p>`).join("") : `<p>Keine Bekanntmachungen.</p>`}</div>
+        <div><strong>Letzte Missionen</strong>${missions.length ? missions.slice(0, 3).map((item) => `<p>${escapeHtml(item.title)} - ${escapeHtml(item.result)}</p>`).join("") : `<p>Keine Berichte.</p>`}</div>
+        <div><strong>Aktivitaet</strong>${activities.length ? activities.slice(0, 4).map((item) => `<p>${escapeHtml(item.member)}: ${escapeHtml(item.type)} - ${escapeHtml(item.note)}</p>`).join("") : `<p>Keine Eintraege.</p>`}</div>
+      </div>
+      <div class="action-row">
+        <button class="chip-button" id="exportMembersButton" type="button">CSV Export</button>
+      </div>
+    </section>
     ${
       isOwner() && members.length
         ? `<section class="rights-panel">
@@ -835,6 +978,21 @@ function renderMembersPanel() {
                     </label>
                   `
                 )
+                .join("")}
+            </div>
+            <div class="category-rules">
+              <strong>Rang-Rechte Matrix</strong>
+              ${getFlatRanks(state.activeUnit)
+                .map((rank) => {
+                  const rankRight = state.rankRights[state.activeUnit]?.[rank.code] || { records: false, promote: false };
+                  return `
+                    <div class="rights-row" data-rank-code="${rank.code}">
+                      <span>${escapeHtml(rank.code)}</span>
+                      <label><input type="checkbox" data-rank-right="records" ${rankRight.records ? "checked" : ""} /> Akten</label>
+                      <label><input type="checkbox" data-rank-right="promote" ${rankRight.promote ? "checked" : ""} /> Rang</label>
+                    </div>
+                  `;
+                })
                 .join("")}
             </div>
             ${members
@@ -913,11 +1071,19 @@ function renderMembersPanel() {
                                       ${member.labels.map((label) => `<small class="member-label">${escapeHtml(label)}</small>`).join("")}
                                     </div>
                                     ${
+                                      member.absentUntil
+                                        ? `<p class="absence-badge">Abwesend bis ${escapeHtml(member.absentUntil)}</p>`
+                                        : ""
+                                    }
+                                    ${
                                       canManageRecords()
                                         ? `<label class="compact-field">Spalte
                                             <select data-member-status>
                                               ${memberBoardColumns.map((option) => `<option value="${option.id}" ${member.status === option.id ? "selected" : ""}>${option.title}</option>`).join("")}
                                             </select>
+                                          </label>
+                                          <label class="compact-field">Abmeldung bis
+                                            <input data-member-absence type="date" value="${escapeHtml(member.absentUntil || "")}" />
                                           </label>`
                                         : ""
                                     }
@@ -946,6 +1112,8 @@ function renderMembersPanel() {
                                         : ""
                                     }
                                     <div class="record-fields">
+                                      <label>RP Profil<textarea data-member-note="rpProfile" rows="2">${escapeHtml(member.rpProfile || "")}</textarea></label>
+                                      <label>Spezialisierung / Ausruestung<textarea data-member-note="specialization" rows="2">${escapeHtml(member.specialization || "")}</textarea></label>
                                       <label>Notizen<textarea data-member-note="notes" rows="2">${escapeHtml(member.notes || "")}</textarea></label>
                                       <label>Verwarnungen<textarea data-member-note="warnings" rows="2">${escapeHtml(member.warnings || "")}</textarea></label>
                                       <label>Auszeichnungen<textarea data-member-note="awards" rows="2">${escapeHtml(member.awards || "")}</textarea></label>
@@ -1081,8 +1249,19 @@ function renderApplicationsPanel() {
                       <span>${escapeHtml(application.author)} - ${formatTime(application.createdAt)}</span>
                       <p>${escapeHtml(application.motivation)}</p>
                       ${
+                        application.comments?.length
+                          ? `<div class="application-comments">${application.comments.map((comment) => `<span>${escapeHtml(comment.author)}: ${escapeHtml(comment.body)}</span>`).join("")}</div>`
+                          : ""
+                      }
+                      ${
                         state.account?.role === "owner"
-                          ? `<div class="action-row"><button class="chip-button" data-application-status="angenommen" type="button">Annehmen</button><button class="chip-button danger" data-application-status="abgelehnt" type="button">Ablehnen</button></div>`
+                          ? `<div class="application-review">
+                              <select data-application-next>
+                                ${["offen", "in pruefung", "angenommen", "abgelehnt"].map((status) => `<option value="${status}" ${application.status === status ? "selected" : ""}>${status}</option>`).join("")}
+                              </select>
+                              <input data-application-comment maxlength="160" placeholder="Kommentar / Rueckfrage" />
+                              <button class="chip-button" data-application-save type="button">Pruefung speichern</button>
+                            </div>`
                           : ""
                       }
                     </div>
@@ -1110,7 +1289,7 @@ function renderNotificationsPanel() {
       ${
         state.notifications.length
           ? state.notifications
-              .map((note) => `<div class="notification-item ${note.read ? "" : "unread"}"><strong>${escapeHtml(note.title)}</strong><span>${formatTime(note.createdAt)}</span><p>${escapeHtml(note.body)}</p></div>`)
+              .map((note) => `<div class="notification-item ${note.read ? "" : "unread"}"><strong>${escapeHtml(note.title)}</strong><span>${escapeHtml(note.unit || "Holonet")} - ${formatTime(note.createdAt)}</span><p>${escapeHtml(note.body)}</p></div>`)
               .join("")
           : `<div class="empty-state">Keine Benachrichtigungen.</div>`
       }
@@ -1154,6 +1333,17 @@ function renderAdminPanel() {
       <strong>Admin Dashboard</strong>
       <button class="chip-button" id="refreshAdminButton" type="button">Aktualisieren</button>
     </div>
+    <section class="dashboard-strip">
+      ${units
+        .filter((unit) => !unit.public)
+        .map((unit) => {
+          const unitMembers = getMembers(unit.id);
+          const openApplications = state.applications.filter((application) => application.unit === unit.id && !["angenommen", "abgelehnt"].includes(application.status)).length;
+          const openTrainings = unitMembers.reduce((sum, member) => sum + normalizeTrainings(member, unit.id).trainings.filter((training) => !training.done).length, 0);
+          return `<div><strong>${unit.name}</strong><span>${unitMembers.length} Akten</span><span>${openApplications} Bewerbungen</span><span>${openTrainings} offene Fortbildungen</span></div>`;
+        })
+        .join("")}
+    </section>
     <div class="admin-grid">
       ${state.adminUsers
         .map(
@@ -1208,6 +1398,15 @@ function renderAdminPanel() {
             .map((entry) => `<div class="audit-entry"><span>${escapeHtml(entry.created_at)}</span><strong>${escapeHtml(entry.action)}</strong><p>${escapeHtml(entry.actor_name)} -> ${escapeHtml(entry.target)}</p></div>`)
             .join("")
         : `<div class="empty-state">Noch keine Audit-Eintraege.</div>`}
+    </section>
+    <section class="audit-panel">
+      <strong>Akten-Audit</strong>
+      ${state.memberAudit.length
+        ? state.memberAudit
+            .slice(0, 80)
+            .map((entry) => `<div class="audit-entry"><span>${formatTime(entry.createdAt)} - ${escapeHtml(entry.unit)}</span><strong>${escapeHtml(entry.action)}</strong><p>${escapeHtml(entry.actor)} -> ${escapeHtml(entry.member)} ${escapeHtml(entry.details || "")}</p></div>`)
+            .join("")
+        : `<div class="empty-state">Noch keine Akten-Aenderungen.</div>`}
     </section>
   `;
 }
@@ -1296,6 +1495,7 @@ function changeMemberRank(memberId, direction) {
     const nextIndex = Math.min(Math.max(index + direction, 0), ranks.length - 1);
     const from = ranks[index] || ranks.at(-1);
     const to = ranks[nextIndex];
+    logMemberAudit(direction < 0 ? "rang.befoerdert" : "rang.degradiert", member, `${from.code} -> ${to.code}`);
     return {
       ...member,
       rankCode: to.code,
@@ -1320,6 +1520,18 @@ function changeMemberRank(memberId, direction) {
 function bindEvents() {
   if (eventsBound) return;
   eventsBound = true;
+
+  if (els.introVideo && !sessionStorage.getItem("galactic-intro-seen")) {
+    els.introVideo.classList.add("playing");
+    const closeIntro = () => {
+      els.introVideo.classList.add("hidden");
+      sessionStorage.setItem("galactic-intro-seen", "1");
+    };
+    els.skipIntroButton?.addEventListener("click", closeIntro);
+    setTimeout(closeIntro, 4200);
+  } else if (els.introVideo) {
+    els.introVideo.classList.add("hidden");
+  }
 
   els.authForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1379,6 +1591,31 @@ function bindEvents() {
       return;
     }
 
+    if (event.target.closest("#exportMembersButton")) {
+      const rows = [["Einheit", "Rufname", "Dienstnummer", "Rang", "Status", "Labels", "Fortbildungen offen", "Abwesend bis"]];
+      getMembers().forEach((member) => {
+        const normalized = normalizeTrainings(member);
+        rows.push([
+          state.activeUnit,
+          normalized.name,
+          normalized.serial,
+          normalized.rankCode,
+          normalized.status,
+          normalized.labels.join(" | "),
+          normalized.trainings.filter((training) => !training.done).map((training) => training.name).join(" | "),
+          normalized.absentUntil || ""
+        ]);
+      });
+      const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `${state.activeUnit}-mitglieder.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+      return;
+    }
+
     if (event.target.closest("#addMemberButton")) {
       if (!canManageRecords()) return;
       renderMemberRankOptions();
@@ -1399,7 +1636,13 @@ function bindEvents() {
       if (!name) return;
       const serial = prompt("Dienstnummer?");
       if (!serial) return;
-      setMembers(state.activeUnit, [createMemberFromTemplate(template, name.trim(), serial.trim()), ...getMembers()]);
+      if (serialExists(serial.trim())) {
+        alert("Diese Dienstnummer existiert bereits.");
+        return;
+      }
+      const member = createMemberFromTemplate(template, name.trim(), serial.trim());
+      logMemberAudit("akte.kopiert", member, template.name);
+      setMembers(state.activeUnit, [member, ...getMembers()]);
       renderMembersPanel();
       return;
     }
@@ -1437,9 +1680,60 @@ function bindEvents() {
     const templateForm = event.target.closest("#templateForm");
     const trainingForm = event.target.closest("[data-training-form]");
     const labelForm = event.target.closest("[data-label-form]");
-    if (!templateForm && !trainingForm && !labelForm) return;
+    const announcementForm = event.target.closest("#announcementForm");
+    const missionForm = event.target.closest("#missionForm");
+    const activityForm = event.target.closest("#activityForm");
+    if (!templateForm && !trainingForm && !labelForm && !announcementForm && !missionForm && !activityForm) return;
     event.preventDefault();
     if (!canManageRecords()) return;
+
+    if (announcementForm) {
+      getAnnouncements().unshift({
+        id: crypto.randomUUID(),
+        title: document.querySelector("#announcementTitle").value.trim(),
+        body: document.querySelector("#announcementBody").value.trim(),
+        author: state.user.name,
+        createdAt: Date.now()
+      });
+      state.announcements[state.activeUnit] = getAnnouncements().slice(0, 10);
+      addUnitNotification("Bekanntmachung", `${state.activeUnit}: ${document.querySelector("#announcementTitle").value.trim()}`, state.activeUnit);
+      renderAll();
+      return;
+    }
+
+    if (missionForm) {
+      const report = {
+        id: crypto.randomUUID(),
+        title: document.querySelector("#missionTitle").value.trim(),
+        members: parseList(document.querySelector("#missionMembers").value),
+        result: document.querySelector("#missionResult").value.trim(),
+        author: state.user.name,
+        createdAt: Date.now()
+      };
+      getMissionReports().unshift(report);
+      state.missionReports[state.activeUnit] = getMissionReports().slice(0, 80);
+      addUnitNotification("Missionsbericht", `${state.activeUnit}: ${report.title}`, state.activeUnit);
+      saveState();
+      renderMembersPanel();
+      return;
+    }
+
+    if (activityForm) {
+      const entry = {
+        id: crypto.randomUUID(),
+        member: document.querySelector("#activityMember").value.trim(),
+        type: document.querySelector("#activityType").value,
+        note: document.querySelector("#activityNote").value.trim(),
+        actor: state.user.name,
+        createdAt: Date.now()
+      };
+      getActivityLogs().unshift(entry);
+      state.activityLogs[state.activeUnit] = getActivityLogs().slice(0, 120);
+      addUnitNotification("Aktivitaetslog", `${entry.member}: ${entry.type}`, state.activeUnit);
+      saveState();
+      renderMembersPanel();
+      return;
+    }
 
     if (templateForm) {
       const name = templateForm.querySelector("#templateName").value.trim();
@@ -1474,9 +1768,11 @@ function bindEvents() {
       const normalized = normalizeTrainings(member);
       if (trainingForm) {
         if (normalized.trainings.some((training) => training.name.toLowerCase() === value.toLowerCase())) return normalized;
+        logMemberAudit("fortbildung.angelegt", normalized, value);
         return { ...normalized, trainings: [...normalized.trainings, { name: value, done: false }] };
       }
       if (normalized.labels.some((label) => label.toLowerCase() === value.toLowerCase())) return normalized;
+      logMemberAudit("label.angelegt", normalized, value);
       return { ...normalized, labels: [...normalized.labels, value].slice(0, 8) };
     });
     setMembers(state.activeUnit, members);
@@ -1484,6 +1780,17 @@ function bindEvents() {
   });
 
   els.membersPanel.addEventListener("change", (event) => {
+    if (event.target.closest("#memberSearchInput, #memberStatusFilter, #memberLabelFilter, #memberTrainingFilter")) {
+      state.memberFilters = {
+        search: document.querySelector("#memberSearchInput")?.value || "",
+        status: document.querySelector("#memberStatusFilter")?.value || "all",
+        label: document.querySelector("#memberLabelFilter")?.value || "all",
+        training: document.querySelector("#memberTrainingFilter")?.value || "all"
+      };
+      renderMembersPanel();
+      return;
+    }
+
     const categoryRule = event.target.closest("[data-category-rule]");
     if (categoryRule) {
       if (!isOwner()) return;
@@ -1503,11 +1810,41 @@ function bindEvents() {
       return;
     }
 
+    const rankRightCheckbox = event.target.closest('input[type="checkbox"][data-rank-right]');
+    if (rankRightCheckbox) {
+      if (!isOwner()) return;
+      const row = event.target.closest("[data-rank-code]");
+      state.rankRights[state.activeUnit] ||= {};
+      state.rankRights[state.activeUnit][row.dataset.rankCode] ||= { records: false, promote: false, rights: false };
+      state.rankRights[state.activeUnit][row.dataset.rankCode][rankRightCheckbox.dataset.rankRight] = rankRightCheckbox.checked;
+      saveState();
+      renderMembersPanel();
+      return;
+    }
+
     const statusSelect = event.target.closest("[data-member-status]");
     if (statusSelect) {
       if (!canManageRecords()) return;
       const card = event.target.closest(".member-card");
-      const members = getMembers().map((member) => (member.id === card.dataset.memberId ? { ...member, status: statusSelect.value } : member));
+      const members = getMembers().map((member) => {
+        if (member.id !== card.dataset.memberId) return member;
+        logMemberAudit("akte.verschoben", member, statusSelect.value);
+        return { ...member, status: statusSelect.value };
+      });
+      setMembers(state.activeUnit, members);
+      renderMembersPanel();
+      return;
+    }
+
+    const absenceInput = event.target.closest("[data-member-absence]");
+    if (absenceInput) {
+      if (!canManageRecords()) return;
+      const card = event.target.closest(".member-card");
+      const members = getMembers().map((member) => {
+        if (member.id !== card.dataset.memberId) return member;
+        logMemberAudit("abmeldung", member, absenceInput.value || "geloescht");
+        return { ...member, absentUntil: absenceInput.value };
+      });
       setMembers(state.activeUnit, members);
       renderMembersPanel();
       return;
@@ -1520,7 +1857,11 @@ function bindEvents() {
       if (!canManageRecords()) return;
       const card = event.target.closest(".member-card");
       const field = noteField.dataset.memberNote;
-      const members = getMembers().map((member) => (member.id === card.dataset.memberId ? { ...member, [field]: noteField.value } : member));
+      const members = getMembers().map((member) => {
+        if (member.id !== card.dataset.memberId) return member;
+        logMemberAudit(`akte.${field}`, member, "Text aktualisiert");
+        return { ...member, [field]: noteField.value };
+      });
       setMembers(state.activeUnit, members);
       return;
     }
@@ -1538,6 +1879,8 @@ function bindEvents() {
         )
       };
     });
+    const changed = members.find((member) => member.id === card.dataset.memberId);
+    logMemberAudit("fortbildung.status", changed, `${checkbox.dataset.training}: ${checkbox.checked ? "erledigt" : "offen"}`);
     setMembers(state.activeUnit, members);
   });
 
@@ -1592,13 +1935,22 @@ function bindEvents() {
   });
 
   els.applicationsPanel.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-application-status]");
+    const button = event.target.closest("[data-application-save]");
     if (!button || state.account?.role !== "owner") return;
     const item = event.target.closest(".application-item");
-    state.applications = state.applications.map((application) =>
-      application.id === item.dataset.applicationId ? { ...application, status: button.dataset.applicationStatus, reviewedBy: state.user.name, reviewedAt: Date.now() } : application
-    );
-    addNotification("Bewerbung entschieden", `Eine Bewerbung wurde ${button.dataset.applicationStatus}.`);
+    const status = item.querySelector("[data-application-next]").value;
+    const comment = item.querySelector("[data-application-comment]").value.trim();
+    state.applications = state.applications.map((application) => {
+      if (application.id !== item.dataset.applicationId) return application;
+      return {
+        ...application,
+        status,
+        reviewedBy: state.user.name,
+        reviewedAt: Date.now(),
+        comments: comment ? [...(application.comments || []), { id: crypto.randomUUID(), author: state.user.name, body: comment, createdAt: Date.now() }] : application.comments || []
+      };
+    });
+    addNotification("Bewerbung aktualisiert", `Eine Bewerbung ist jetzt ${status}.`, "Holonet");
     saveState();
     renderApplicationsPanel();
   });
@@ -1658,6 +2010,10 @@ function bindEvents() {
   els.memberForm.addEventListener("submit", (event) => {
     event.preventDefault();
     if (!canManageRecords()) return;
+    if (serialExists(els.memberSerial.value.trim())) {
+      alert("Diese Dienstnummer ist bereits vergeben.");
+      return;
+    }
     const members = getMembers();
     const template = getMemberTemplates().find((item) => item.id === els.memberTemplate.value);
     const manualTrainings = parseList(els.memberTrainings.value);
@@ -1671,13 +2027,15 @@ function bindEvents() {
       awards: "",
       history: ""
     };
-    members.unshift({
+    const member = {
       ...createMemberFromTemplate(baseTemplate, els.memberName.value.trim(), els.memberSerial.value.trim()),
       rankCode: els.memberRank.value,
       status: els.memberStatus.value,
       labels: parseList(els.memberLabels.value),
       trainings: (manualTrainings.length ? manualTrainings : baseTemplate.trainings.map((training) => training.name)).map((name) => ({ name, done: false }))
-    });
+    };
+    members.unshift(member);
+    logMemberAudit("akte.angelegt", member, "Neue Personalakte");
     setMembers(state.activeUnit, members);
     els.memberDialog.close();
     renderMembersPanel();
@@ -1888,7 +2246,7 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=23").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=24").catch(() => {});
   }
 
   setInterval(async () => {
