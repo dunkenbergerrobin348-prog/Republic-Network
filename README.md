@@ -39,6 +39,7 @@ Siehe [DEPLOYMENT.md](DEPLOYMENT.md).
 - Audit-Log fuer Admin-Aktionen
 - Owner-Passwortreset fuer Nutzer
 - Ranghistorie in Personalakten
+- Adminbereich serverseitig und clientseitig auf Owner beschraenkt
 - Erweiterte Akten mit Notizen, Verwarnungen, Auszeichnungen und Einsatzhistorie
 - Automatische Chat-Aktualisierung
 - PWA-Manifest und Service Worker fuer App-Installation

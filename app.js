@@ -849,7 +849,11 @@ function renderAdminPanel() {
   }
 
   if (state.account?.role !== "owner") {
-    els.adminPanel.innerHTML = `<div class="empty-state">Adminbereich nur fuer Owner.</div>`;
+    state.view = "home";
+    state.adminUsers = [];
+    state.auditEntries = [];
+    renderNav();
+    els.adminPanel.innerHTML = "";
     return;
   }
 
@@ -1174,6 +1178,8 @@ function bindEvents() {
   });
 
   els.adminPanel.addEventListener("click", async (event) => {
+    if (state.account?.role !== "owner") return;
+
     if (event.target.closest("#refreshAdminButton")) {
       await loadAdminUsers();
       renderAdminPanel();
@@ -1387,12 +1393,18 @@ function bindEvents() {
     await apiFetch("./api/auth/logout", { method: "POST" }).catch(() => {});
     authToken = "";
     localStorage.removeItem(authTokenKey);
+    state.account = null;
+    state.view = "home";
+    state.adminUsers = [];
+    state.auditEntries = [];
+    document.body.classList.remove("is-owner");
     els.profileDialog.close();
     showAuthDialog("Du wurdest ausgeloggt.");
   });
 
   els.navItems.forEach((button) => {
     button.addEventListener("click", async () => {
+      if (button.dataset.view === "admin" && state.account?.role !== "owner") return;
       state.view = button.dataset.view;
       if (state.view === "admin") await loadAdminUsers();
       renderNav();
@@ -1426,6 +1438,11 @@ async function boot() {
     const activeElement = document.activeElement;
     if (activeElement && ["INPUT", "TEXTAREA", "SELECT"].includes(activeElement.tagName)) return;
     await loadState();
+    if (state.account?.role !== "owner" && state.view === "admin") {
+      state.view = "home";
+      state.adminUsers = [];
+      state.auditEntries = [];
+    }
     renderAll();
   }, 7000);
 }
