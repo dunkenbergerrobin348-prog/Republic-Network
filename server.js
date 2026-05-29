@@ -53,6 +53,16 @@ db.exec(`
     expires_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_id INTEGER,
+    actor_name TEXT NOT NULL DEFAULT '',
+    action TEXT NOT NULL,
+    target TEXT NOT NULL DEFAULT '',
+    details TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 for (const migration of [
@@ -184,6 +194,11 @@ function createSession(userId) {
 
 function hasUsers() {
   return db.prepare("SELECT COUNT(*) AS count FROM users").get().count > 0;
+}
+
+function writeAudit(actor, action, target = "", details = {}) {
+  db.prepare("INSERT INTO audit_log (actor_id, actor_name, action, target, details) VALUES (?, ?, ?, ?, ?)")
+    .run(actor?.id || null, actor?.username || "system", action, target, JSON.stringify(details));
 }
 
 function getState() {
@@ -348,9 +363,17 @@ async function handleApi(request, response, pathname) {
     return true;
   }
 
+  if (pathname === "/api/admin/audit" && request.method === "GET") {
+    if (!requireOwner(request, response)) return true;
+    const rows = db.prepare("SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 120").all();
+    sendJson(response, 200, { ok: true, entries: rows.map((row) => ({ ...row, details: JSON.parse(row.details || "{}") })) });
+    return true;
+  }
+
   const userMatch = pathname.match(/^\/api\/admin\/users\/(\d+)$/);
   if (userMatch && request.method === "PATCH") {
-    if (!requireOwner(request, response)) return true;
+    const actor = requireOwner(request, response);
+    if (!actor) return true;
     try {
       const id = Number(userMatch[1]);
       const payload = await readJsonBody(request);
@@ -363,7 +386,36 @@ async function handleApi(request, response, pathname) {
       const status = ["pending", "approved", "blocked"].includes(payload.status) ? payload.status : current.account_status;
       const unitAccess = Array.isArray(payload.unitAccess) ? payload.unitAccess : JSON.parse(current.unit_access || "[]");
       db.prepare("UPDATE users SET role = ?, account_status = ?, unit_access = ? WHERE id = ?").run(role, status, JSON.stringify(unitAccess), id);
+      writeAudit(actor, "user.updated", current.username, { role, status, unitAccess });
       sendJson(response, 200, { ok: true, user: sanitizeUser(db.prepare("SELECT * FROM users WHERE id = ?").get(id)) });
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  const resetMatch = pathname.match(/^\/api\/admin\/users\/(\d+)\/password$/);
+  if (resetMatch && request.method === "POST") {
+    const actor = requireOwner(request, response);
+    if (!actor) return true;
+    try {
+      const id = Number(resetMatch[1]);
+      const payload = await readJsonBody(request);
+      const password = String(payload.password || "");
+      if (password.length < 6) {
+        sendJson(response, 400, { ok: false, error: "Passwort muss mindestens 6 Zeichen haben" });
+        return true;
+      }
+      const target = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+      if (!target) {
+        sendJson(response, 404, { ok: false, error: "Nutzer nicht gefunden" });
+        return true;
+      }
+      const { salt, hash } = hashPassword(password);
+      db.prepare("UPDATE users SET password_salt = ?, password_hash = ? WHERE id = ?").run(salt, hash, id);
+      db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
+      writeAudit(actor, "password.reset", target.username, {});
+      sendJson(response, 200, { ok: true });
     } catch (error) {
       sendJson(response, 400, { ok: false, error: error.message });
     }

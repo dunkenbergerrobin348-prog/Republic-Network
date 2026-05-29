@@ -823,6 +823,53 @@ dialog::backdrop {
   accent-color: var(--brand);
 }
 
+.password-reset {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.audit-panel,
+.rank-history {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgba(139, 172, 210, 0.22);
+  border-radius: 8px;
+  background: rgba(3, 8, 20, 0.38);
+}
+
+.audit-panel > strong,
+.rank-history > strong {
+  color: var(--accent);
+}
+
+.audit-entry {
+  border-top: 1px solid rgba(139, 172, 210, 0.18);
+  padding-top: 7px;
+}
+
+.audit-entry span,
+.rank-history span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.audit-entry strong {
+  display: block;
+  color: var(--brand);
+}
+
+.audit-entry p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .chat-panel {
   display: grid;
   gap: 10px;

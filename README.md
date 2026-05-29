@@ -36,6 +36,9 @@ Siehe [DEPLOYMENT.md](DEPLOYMENT.md).
 - Admin-Dashboard fuer Nutzerstatus, Rollen und Einheiten
 - Rollen `user`, `admin`, `owner`
 - Thread-Erstellung pro Einheitskategorie auf User/Admin/Owner begrenzbar
+- Audit-Log fuer Admin-Aktionen
+- Owner-Passwortreset fuer Nutzer
+- Ranghistorie in Personalakten
 - Erweiterte Akten mit Notizen, Verwarnungen, Auszeichnungen und Einsatzhistorie
 - Automatische Chat-Aktualisierung
 - PWA-Manifest und Service Worker fuer App-Installation

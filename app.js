@@ -127,6 +127,7 @@ const state = {
   user: { name: "Du", bio: "Mitglied" },
   account: null,
   adminUsers: [],
+  auditEntries: [],
   threads: [],
   access: {},
   members: {},
@@ -757,6 +758,18 @@ function renderMembersPanel() {
                       <label>Auszeichnungen<textarea data-member-note="awards" rows="2">${escapeHtml(member.awards || "")}</textarea></label>
                       <label>Einsatzhistorie<textarea data-member-note="history" rows="2">${escapeHtml(member.history || "")}</textarea></label>
                     </div>
+                    <div class="rank-history">
+                      <strong>Ranghistorie</strong>
+                      ${
+                        member.rankHistory?.length
+                          ? member.rankHistory
+                              .slice()
+                              .reverse()
+                              .map((entry) => `<span>${formatTime(entry.createdAt)} - ${escapeHtml(entry.from)} -> ${escapeHtml(entry.to)} durch ${escapeHtml(entry.actor)}</span>`)
+                              .join("")
+                          : `<span>Keine Rangbewegungen.</span>`
+                      }
+                    </div>
                     <div class="action-row">
                       ${canPromoteMembers() ? `<button class="chip-button" data-member-action="promote" type="button">Befoerdern</button>` : ""}
                       ${canPromoteMembers() ? `<button class="chip-button" data-member-action="demote" type="button">Degradieren</button>` : ""}
@@ -815,10 +828,18 @@ function renderChatPanel() {
 
 async function loadAdminUsers() {
   if (state.account?.role !== "owner") return;
-  const response = await apiFetch("./api/admin/users", { cache: "no-store" });
-  if (!response.ok) return;
-  const payload = await response.json();
-  state.adminUsers = payload.users || [];
+  const [usersResponse, auditResponse] = await Promise.all([
+    apiFetch("./api/admin/users", { cache: "no-store" }),
+    apiFetch("./api/admin/audit", { cache: "no-store" })
+  ]);
+  if (usersResponse.ok) {
+    const payload = await usersResponse.json();
+    state.adminUsers = payload.users || [];
+  }
+  if (auditResponse.ok) {
+    const payload = await auditResponse.json();
+    state.auditEntries = payload.entries || [];
+  }
 }
 
 function renderAdminPanel() {
@@ -874,12 +895,24 @@ function renderAdminPanel() {
                   )
                   .join("")}
               </div>
+              <label class="password-reset">Neues Passwort
+                <input data-password-reset type="password" minlength="6" placeholder="Optional" />
+              </label>
               <button class="primary-button" data-admin-save type="button">Speichern</button>
+              <button class="chip-button danger full-width" data-password-save type="button">Passwort setzen</button>
             </article>
           `
         )
         .join("")}
     </div>
+    <section class="audit-panel">
+      <strong>Audit-Log</strong>
+      ${state.auditEntries.length
+        ? state.auditEntries
+            .map((entry) => `<div class="audit-entry"><span>${escapeHtml(entry.created_at)}</span><strong>${escapeHtml(entry.action)}</strong><p>${escapeHtml(entry.actor_name)} -> ${escapeHtml(entry.target)}</p></div>`)
+            .join("")
+        : `<div class="empty-state">Noch keine Audit-Eintraege.</div>`}
+    </section>
   `;
 }
 
@@ -961,7 +994,23 @@ function changeMemberRank(memberId, direction) {
     if (member.id !== memberId) return member;
     const index = ranks.findIndex((rank) => rank.code === member.rankCode);
     const nextIndex = Math.min(Math.max(index + direction, 0), ranks.length - 1);
-    return { ...member, rankCode: ranks[nextIndex].code };
+    const from = ranks[index] || ranks.at(-1);
+    const to = ranks[nextIndex];
+    return {
+      ...member,
+      rankCode: to.code,
+      rankHistory: [
+        ...(member.rankHistory || []),
+        {
+          id: crypto.randomUUID(),
+          from: from.code,
+          to: to.code,
+          actor: state.user.name,
+          reason: direction < 0 ? "Befoerderung" : "Degradierung",
+          createdAt: Date.now()
+        }
+      ]
+    };
   });
   setMembers(state.activeUnit, members);
   addNotification("Rang geaendert", `${state.activeUnit}: Personalakte wurde ${direction < 0 ? "befoerdert" : "degradiert"}.`);
@@ -1132,9 +1181,27 @@ function bindEvents() {
     }
 
     const saveButton = event.target.closest("[data-admin-save]");
-    if (!saveButton) return;
+    const passwordButton = event.target.closest("[data-password-save]");
+    if (!saveButton && !passwordButton) return;
     const card = event.target.closest(".admin-card");
     const id = card.dataset.userId;
+
+    if (passwordButton) {
+      const password = card.querySelector("[data-password-reset]").value;
+      if (!password) return;
+      const response = await apiFetch(`./api/admin/users/${id}/password`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password })
+      });
+      if (response.ok) {
+        card.querySelector("[data-password-reset]").value = "";
+        await loadAdminUsers();
+        renderAdminPanel();
+      }
+      return;
+    }
+
     const status = card.querySelector('[data-admin-field="status"]').value;
     const role = card.querySelector('[data-admin-field="role"]').value;
     const unitAccess = [...card.querySelectorAll("[data-admin-unit]:checked")].map((input) => input.dataset.adminUnit);
