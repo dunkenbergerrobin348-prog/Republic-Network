@@ -752,6 +752,60 @@ dialog::backdrop {
   margin: 0 0 12px;
 }
 
+.overview-panel {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.home-dashboard {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(var(--unit-rgb), 0.28);
+  border-radius: 8px;
+  background: rgba(3, 8, 20, 0.58);
+}
+
+.home-dashboard header,
+.admin-applications-panel > strong {
+  color: var(--brand);
+}
+
+.quick-actions,
+.quick-filter-row,
+.sub-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.sub-tab {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(139, 172, 210, 0.28);
+  border-radius: 8px;
+  background: rgba(3, 8, 20, 0.56);
+  color: var(--muted);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.sub-tab.active,
+.chip-button.active {
+  border-color: rgba(var(--unit-rgb), 0.58);
+  background: rgba(var(--unit-rgb), 0.16);
+  color: var(--unit);
+}
+
+.breadcrumb {
+  color: var(--accent);
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .members-header {
   display: flex;
   align-items: center;
@@ -1024,6 +1078,31 @@ dialog::backdrop {
   font-weight: 900;
 }
 
+.members-panel[data-subview="board"] .member-card {
+  padding: 10px;
+}
+
+.members-panel[data-subview="board"] .member-card.dossier::after,
+.members-panel[data-subview="board"] .record-fields,
+.members-panel[data-subview="board"] .rank-history,
+.members-panel[data-subview="board"] .inline-add-form {
+  display: none;
+}
+
+.members-panel[data-subview="board"] .training-list {
+  margin-top: 8px;
+}
+
+.members-panel[data-subview="board"] .training-item:nth-child(n+4) {
+  display: none;
+}
+
+.members-panel[data-subview="missionen"] #activityForm,
+.members-panel[data-subview="missionen"] #announcementForm,
+.members-panel[data-subview="aktivitaet"] #missionForm {
+  display: none;
+}
+
 .member-card header b {
   align-self: start;
   border: 1px solid rgba(var(--unit-rgb), 0.48);
@@ -1164,6 +1243,15 @@ dialog::backdrop {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 8px;
+}
+
+.admin-applications-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(139, 172, 210, 0.22);
+  border-radius: 8px;
+  background: rgba(3, 8, 20, 0.42);
 }
 
 .unit-dashboard {

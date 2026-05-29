@@ -129,6 +129,8 @@ const state = {
   pendingUnit: null,
   category: "Alle",
   view: "home",
+  memberSubView: "board",
+  adminSubView: "users",
   query: "",
   selectedThreadId: null,
   user: { name: "Du", bio: "Mitglied" },
@@ -165,6 +167,7 @@ let eventsBound = false;
 const els = {
   unitTabs: document.querySelector("#unitTabs"),
   accessPanel: document.querySelector("#accessPanel"),
+  overviewPanel: document.querySelector("#overviewPanel"),
   tabs: document.querySelector("#categoryTabs"),
   threadList: document.querySelector("#threadList"),
   searchInput: document.querySelector("#searchInput"),
@@ -787,12 +790,53 @@ function renderAccessPanel() {
   const pinned = getAnnouncements(state.activeUnit).slice(0, 2);
   if (unit.public) {
     const unread = state.notifications.filter((note) => !note.read).length;
-    els.accessPanel.innerHTML = `<strong>Offener Holonet-Kanal</strong><span>${unread ? unread + " neue Benachrichtigungen" : "Einheitsbereiche erfordern eine Registerpruefung."}</span>`;
+    els.accessPanel.innerHTML = `<div class="breadcrumb">${escapeHtml(state.activeUnit)} > ${escapeHtml(state.category)} > ${escapeHtml(state.view)}</div><strong>Offener Holonet-Kanal</strong><span>${unread ? unread + " neue Benachrichtigungen" : "Einheitsbereiche erfordern eine Registerpruefung."}</span>`;
     return;
   }
-  els.accessPanel.innerHTML = `<strong>${escapeHtml(unit.name)} Zugriff bestaetigt</strong><span>${escapeHtml(access.callsign)} - Register ${escapeHtml(access.code)}</span>${
+  els.accessPanel.innerHTML = `<div class="breadcrumb">${escapeHtml(state.activeUnit)} > ${escapeHtml(state.category)} > ${state.category === "Mitgliederakten" ? escapeHtml(state.memberSubView) : escapeHtml(state.view)}</div><strong>${escapeHtml(unit.name)} Zugriff bestaetigt</strong><span>${escapeHtml(access.callsign)} - Register ${escapeHtml(access.code)} - Rolle ${escapeHtml(state.account?.role || "user")}</span>${
     pinned.length ? `<div class="pinned-stack">${pinned.map((item) => `<p><b>${escapeHtml(item.title)}</b> ${escapeHtml(item.body)}</p>`).join("")}</div>` : ""
   }`;
+}
+
+function renderOverviewPanel() {
+  const isForumHome = state.view === "home" && state.activeUnit === "Holonet" && state.category === "Alle";
+  if (!isForumHome) {
+    els.overviewPanel.innerHTML = "";
+    return;
+  }
+  const unitsWithAccess = units.filter((unit) => !unit.public && hasAccess(unit.id));
+  const openApps = state.applications.filter((application) => !["angenommen", "abgelehnt"].includes(application.status));
+  const openPromotions = state.promotionRequests.filter((request) => request.status === "offen");
+  const unread = state.notifications.filter((note) => !note.read).length;
+  const latestMissions = Object.entries(state.missionReports)
+    .flatMap(([unit, reports]) => reports.map((report) => ({ ...report, unit })))
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, 3);
+  els.overviewPanel.innerHTML = `
+    <section class="home-dashboard">
+      <header>
+        <div>
+          <strong>Kommandouebersicht</strong>
+          <span>${escapeHtml(state.user.name)} - ${escapeHtml(state.account?.role || "user")}</span>
+        </div>
+      </header>
+      <div class="dashboard-strip">
+        <div><strong>${unitsWithAccess.length}</strong><span>Einheiten</span></div>
+        <div><strong>${openApps.length}</strong><span>Bewerbungen</span></div>
+        <div><strong>${openPromotions.length}</strong><span>Befoerderungen</span></div>
+        <div><strong>${unread}</strong><span>Info</span></div>
+      </div>
+      <div class="quick-actions">
+        ${unitsWithAccess.slice(0, 4).map((unit) => `<button class="chip-button" data-jump-unit="${unit.id}" type="button">${unit.name}</button>`).join("")}
+        <button class="chip-button" data-jump-view="notifications" type="button">Info</button>
+        ${state.account?.role === "owner" ? `<button class="chip-button" data-jump-view="admin" type="button">Admin</button>` : ""}
+      </div>
+      <div class="command-lists">
+        <div><strong>Letzte Missionen</strong>${latestMissions.length ? latestMissions.map((report) => `<p>${escapeHtml(report.unit)}: ${escapeHtml(report.title)}</p>`).join("") : `<p>Keine Missionsberichte.</p>`}</div>
+        <div><strong>Offene Punkte</strong><p>${openPromotions.length} Befoerderungsantraege, ${openApps.length} Bewerbungen, ${unread} Benachrichtigungen.</p></div>
+      </div>
+    </section>
+  `;
 }
 
 function renderTabs() {
@@ -846,6 +890,12 @@ function renderStats(threads) {
 
 function renderThreads() {
   if (["admin", "notifications"].includes(state.view)) {
+    renderStats([]);
+    els.threadList.innerHTML = "";
+    return;
+  }
+
+  if (state.view === "home" && state.activeUnit === "Holonet" && state.category === "Alle") {
     renderStats([]);
     els.threadList.innerHTML = "";
     return;
@@ -905,7 +955,7 @@ function renderMembersPanel() {
   const allMembers = getMembers().map((member) => normalizeTrainings(member));
   const filter = state.memberFilters;
   const members = allMembers.filter((member) => {
-    const haystack = [member.name, member.serial, member.rankCode, ...(member.labels || []), member.rpProfile || "", member.specialization || ""].join(" ").toLowerCase();
+    const haystack = [member.name, member.serial, member.rankCode, member.absentUntil ? "abwesend" : "", ...(member.labels || []), member.rpProfile || "", member.specialization || ""].join(" ").toLowerCase();
     const matchesSearch = !filter.search || haystack.includes(filter.search.toLowerCase());
     const matchesStatus = filter.status === "all" || member.status === filter.status;
     const matchesLabel = filter.label === "all" || member.labels?.includes(filter.label);
@@ -922,6 +972,7 @@ function renderMembersPanel() {
   const rankMap = Object.fromEntries(getFlatRanks(state.activeUnit).map((rank) => [rank.code, rank]));
   const rights = getUserPermissions();
   const permissionMap = state.permissions[state.activeUnit] || {};
+  const memberTabs = [["board", "Board"], ["akten", "Akten"], ["vorlagen", "Vorlagen"], ["missionen", "Missionen"], ["aktivitaet", "Aktivitaet"], ["rechte", "Rechte"]];
 
   els.membersPanel.innerHTML = `
     <div class="members-header">
@@ -931,13 +982,23 @@ function renderMembersPanel() {
       </div>
       ${canManageRecords() ? `<button class="chip-button" id="addMemberButton" type="button">Akte +</button>` : ""}
     </div>
+    <nav class="sub-tabs" aria-label="Mitgliederakten Ansicht">
+      ${memberTabs.map(([id, label]) => `<button class="sub-tab ${state.memberSubView === id ? "active" : ""}" data-member-subview="${id}" type="button">${label}</button>`).join("")}
+    </nav>
     <section class="command-panel">
       <section class="unit-dashboard">
         <div><strong>${allMembers.length}</strong><span>Personalakten</span></div>
         <div><strong>${allMembers.filter((member) => normalizeTrainings(member).trainings.some((training) => !training.done)).length}</strong><span>offene Fortbildungen</span></div>
         <div><strong>${allMembers.filter((member) => member.absentUntil).length}</strong><span>abwesend</span></div>
-        <div><strong>${getPromotionRequests().filter((request) => request.status === "offen").length}</strong><span>Beförderungsantraege</span></div>
+        <div><strong>${getPromotionRequests().filter((request) => request.status === "offen").length}</strong><span>Befoerderungsantraege</span></div>
       </section>
+      <div class="quick-filter-row">
+        <button class="chip-button ${filter.training === "open" ? "active" : ""}" data-quick-filter="open-training" type="button">Offene Fortbildungen</button>
+        <button class="chip-button ${filter.status === "training" ? "active" : ""}" data-quick-filter="training" type="button">Ausbildung</button>
+        <button class="chip-button ${filter.status === "active" ? "active" : ""}" data-quick-filter="active" type="button">Aktiv</button>
+        <button class="chip-button" data-quick-filter="absent" type="button">Abwesend</button>
+        <button class="chip-button" data-quick-filter="reset" type="button">Reset</button>
+      </div>
       <div class="member-filters">
         <input id="memberSearchInput" value="${escapeHtml(filter.search)}" placeholder="Akten suchen: Name, CT, Rang, Label" />
         <select id="memberStatusFilter">
@@ -1185,6 +1246,23 @@ function renderMembersPanel() {
         : `<div class="empty-state">Noch keine Personalakten fuer diese Einheit.</div>`
     }
   `;
+  applyMemberSubView();
+}
+
+function applyMemberSubView() {
+  els.membersPanel.dataset.subview = state.memberSubView;
+  const command = els.membersPanel.querySelector(".command-panel");
+  const rights = els.membersPanel.querySelector(".rights-panel");
+  const templates = els.membersPanel.querySelector(".template-panel");
+  const board = els.membersPanel.querySelector(".member-board");
+  if (command) command.hidden = !["board", "akten", "missionen", "aktivitaet"].includes(state.memberSubView);
+  if (rights) rights.hidden = state.memberSubView !== "rechte";
+  if (templates) templates.hidden = state.memberSubView !== "vorlagen";
+  if (board) board.hidden = !["board", "akten"].includes(state.memberSubView);
+  const forms = command?.querySelector(".command-grid");
+  const lists = command?.querySelector(".command-lists");
+  if (forms) forms.hidden = !["missionen", "aktivitaet"].includes(state.memberSubView);
+  if (lists) lists.hidden = !["missionen", "aktivitaet"].includes(state.memberSubView);
 }
 
 function renderChatPanel() {
@@ -1366,6 +1444,9 @@ function renderAdminPanel() {
       <strong>Admin Dashboard</strong>
       <button class="chip-button" id="refreshAdminButton" type="button">Aktualisieren</button>
     </div>
+    <nav class="sub-tabs" aria-label="Admin Ansicht">
+      ${[["users", "User"], ["bewerbungen", "Bewerbungen"], ["befoerderungen", "Befoerderungen"], ["audit", "Audit"], ["backup", "Backup"]].map(([id, label]) => `<button class="sub-tab ${state.adminSubView === id ? "active" : ""}" data-admin-subview="${id}" type="button">${label}</button>`).join("")}
+    </nav>
     <section class="command-panel">
       <div class="member-filters">
         <input id="ownerGlobalSearch" placeholder="Owner-Suche: Name, CT, Rang, Label, Einheit" />
@@ -1383,6 +1464,15 @@ function renderAdminPanel() {
           return `<div><strong>${unit.name}</strong><span>${unitMembers.length} Akten</span><span>${openApplications} Bewerbungen</span><span>${openTrainings} offene Fortbildungen</span></div>`;
         })
         .join("")}
+    </section>
+    <section class="admin-applications-panel">
+      <strong>Bewerbungen</strong>
+      ${state.applications.length
+        ? state.applications
+            .slice(0, 80)
+            .map((application) => `<div class="audit-entry"><span>${formatTime(application.createdAt)} - ${escapeHtml(application.unit)}</span><strong>${escapeHtml(application.author)} (${escapeHtml(application.status)})</strong><p>${escapeHtml(application.motivation)}</p></div>`)
+            .join("")
+        : `<div class="empty-state">Keine Bewerbungen vorhanden.</div>`}
     </section>
     <div class="admin-grid">
       ${state.adminUsers
@@ -1449,7 +1539,7 @@ function renderAdminPanel() {
         : `<div class="empty-state">Noch keine Akten-Aenderungen.</div>`}
     </section>
     <section class="audit-panel">
-      <strong>Beförderungsantraege</strong>
+      <strong>Befoerderungsantraege</strong>
       ${state.promotionRequests.length
         ? state.promotionRequests
             .slice(0, 80)
@@ -1458,6 +1548,25 @@ function renderAdminPanel() {
         : `<div class="empty-state">Keine offenen Antraege.</div>`}
     </section>
   `;
+  applyAdminSubView();
+}
+
+function applyAdminSubView() {
+  els.adminPanel.dataset.subview = state.adminSubView;
+  const command = els.adminPanel.querySelector(".command-panel");
+  const dashboard = els.adminPanel.querySelector(".dashboard-strip");
+  const applications = els.adminPanel.querySelector(".admin-applications-panel");
+  const userGrid = els.adminPanel.querySelector(".admin-grid");
+  const auditPanels = [...els.adminPanel.querySelectorAll(".audit-panel")];
+  if (command) command.hidden = !["backup"].includes(state.adminSubView);
+  if (dashboard) dashboard.hidden = !["users", "bewerbungen"].includes(state.adminSubView);
+  if (applications) applications.hidden = state.adminSubView !== "bewerbungen";
+  if (userGrid) userGrid.hidden = state.adminSubView !== "users";
+  auditPanels.forEach((panel, index) => {
+    if (index === 0) panel.hidden = state.adminSubView !== "audit";
+    if (index === 1) panel.hidden = state.adminSubView !== "audit";
+    if (index === 2) panel.hidden = state.adminSubView !== "befoerderungen";
+  });
 }
 
 function renderDetail() {
@@ -1492,6 +1601,7 @@ function renderAll() {
   document.body.dataset.unitTheme = getUnit(state.activeUnit)?.theme || "holonet";
   renderUnitTabs();
   renderAccessPanel();
+  renderOverviewPanel();
   renderTabs();
   renderNav();
   renderMembersPanel();
@@ -1591,10 +1701,10 @@ function renderMemberDetail(memberId) {
       <article><strong>Missionen</strong>${memberMissions.length ? memberMissions.slice(0, 8).map((report) => `<p>${escapeHtml(report.title)}: ${escapeHtml(report.result)}</p>`).join("") : "<p>Keine Missionen verknuepft.</p>"}</article>
       <article><strong>Aktennotizen</strong><p>${escapeHtml(member.notes || "Keine Notizen.")}</p><p>${escapeHtml(member.warnings || "")}</p><p>${escapeHtml(member.awards || "")}</p></article>
       <article><strong>Akten-Audit</strong>${audit.length ? audit.slice(0, 8).map((entry) => `<p>${formatTime(entry.createdAt)}: ${escapeHtml(entry.action)} - ${escapeHtml(entry.details || "")}</p>`).join("") : "<p>Keine Aenderungen.</p>"}</article>
-      <article><strong>Beförderungsantraege</strong>${requests.length ? requests.map((request) => `<p>${escapeHtml(request.status)}: ${escapeHtml(request.fromRank)} -> ${escapeHtml(request.toRank)} - ${escapeHtml(request.reason)}</p>`).join("") : "<p>Keine Antraege.</p>"}</article>
+      <article><strong>Befoerderungsantraege</strong>${requests.length ? requests.map((request) => `<p>${escapeHtml(request.status)}: ${escapeHtml(request.fromRank)} -> ${escapeHtml(request.toRank)} - ${escapeHtml(request.reason)}</p>`).join("") : "<p>Keine Antraege.</p>"}</article>
     </section>
     <form id="promotionRequestForm" class="mini-form">
-      <strong>Beförderungsantrag</strong>
+      <strong>Befoerderungsantrag</strong>
       <select id="promotionTargetRank" required>
         ${getFlatRanks(state.activeUnit).map((rank) => `<option value="${rank.code}" ${rank.code === member.rankCode ? "selected" : ""}>${escapeHtml(rankLabel(rank))}</option>`).join("")}
       </select>
@@ -1648,6 +1758,22 @@ function bindEvents() {
     renderAll();
   });
 
+  els.overviewPanel.addEventListener("click", async (event) => {
+    const unitButton = event.target.closest("[data-jump-unit]");
+    if (unitButton) {
+      state.activeUnit = unitButton.dataset.jumpUnit;
+      state.category = "Mitgliederakten";
+      state.memberSubView = "board";
+      renderAll();
+      return;
+    }
+    const viewButton = event.target.closest("[data-jump-view]");
+    if (!viewButton) return;
+    state.view = viewButton.dataset.jumpView;
+    if (state.view === "admin") await loadAdminUsers();
+    renderAll();
+  });
+
   els.accessForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const unit = getUnit(state.pendingUnit);
@@ -1676,6 +1802,25 @@ function bindEvents() {
   });
 
   els.membersPanel.addEventListener("click", (event) => {
+    const subViewButton = event.target.closest("[data-member-subview]");
+    if (subViewButton) {
+      state.memberSubView = subViewButton.dataset.memberSubview;
+      renderMembersPanel();
+      return;
+    }
+
+    const quickFilter = event.target.closest("[data-quick-filter]");
+    if (quickFilter) {
+      const action = quickFilter.dataset.quickFilter;
+      state.memberFilters = { ...state.memberFilters, search: "", status: "all", label: "all", training: "all" };
+      if (action === "open-training") state.memberFilters.training = "open";
+      if (action === "training") state.memberFilters.status = "training";
+      if (action === "active") state.memberFilters.status = "active";
+      if (action === "absent") state.memberFilters.search = "abwesend";
+      renderMembersPanel();
+      return;
+    }
+
     if (event.target.closest("#clearSeedDataButton")) {
       if (!isOwner()) return;
       clearSeedData();
@@ -1909,7 +2054,7 @@ function bindEvents() {
       createdAt: Date.now()
     });
     logMemberAudit("rang.antrag", member, `${member.rankCode} -> ${targetRank}: ${reason}`);
-    addUnitNotification("Beförderungsantrag", `${member.name}: ${member.rankCode} -> ${targetRank}`, state.activeUnit);
+    addUnitNotification("Befoerderungsantrag", `${member.name}: ${member.rankCode} -> ${targetRank}`, state.activeUnit);
     saveState();
     renderMemberDetail(member.id);
   });
@@ -2102,6 +2247,13 @@ function bindEvents() {
   els.adminPanel.addEventListener("click", async (event) => {
     if (state.account?.role !== "owner") return;
 
+    const adminSubView = event.target.closest("[data-admin-subview]");
+    if (adminSubView) {
+      state.adminSubView = adminSubView.dataset.adminSubview;
+      renderAdminPanel();
+      return;
+    }
+
     if (event.target.closest("#exportFullBackupButton")) {
       exportJson("republic-network-backup.json", {
         threads: state.threads,
@@ -2153,7 +2305,7 @@ function bindEvents() {
         setMembers(request.unit, members);
         state.activeUnit = previousUnit;
       }
-      addNotification("Beförderungsantrag entschieden", `${request.memberName}: ${promotionButton.dataset.promotionDecision}`, request.unit);
+      addNotification("Befoerderungsantrag entschieden", `${request.memberName}: ${promotionButton.dataset.promotionDecision}`, request.unit);
       saveState();
       renderAdminPanel();
       return;
@@ -2468,7 +2620,7 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=27").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=28").catch(() => {});
   }
 
   setInterval(async () => {
@@ -2486,3 +2638,4 @@ async function boot() {
 }
 
 boot();
+
