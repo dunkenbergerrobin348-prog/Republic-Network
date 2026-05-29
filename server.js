@@ -213,6 +213,8 @@ function saveState(payload) {
     members: payload.members && typeof payload.members === "object" ? payload.members : {},
     chats: payload.chats && typeof payload.chats === "object" ? payload.chats : {},
     notifications: Array.isArray(payload.notifications) ? payload.notifications : [],
+    wikiPages: payload.wikiPages && typeof payload.wikiPages === "object" ? payload.wikiPages : {},
+    applications: Array.isArray(payload.applications) ? payload.applications : [],
     owners: payload.owners && typeof payload.owners === "object" ? payload.owners : {},
     permissions: payload.permissions && typeof payload.permissions === "object" ? payload.permissions : {}
   };

@@ -827,6 +827,84 @@ dialog::backdrop {
   margin: 0 0 12px;
 }
 
+.wiki-panel,
+.applications-panel,
+.notifications-panel {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.wiki-card,
+.application-card,
+.notifications-card {
+  padding: 12px;
+  border: 1px solid rgba(var(--unit-rgb), 0.34);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(var(--unit-rgb), 0.11), transparent 42%),
+    rgba(9, 18, 38, 0.82);
+}
+
+.wiki-card header,
+.application-card header,
+.notifications-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.wiki-card strong,
+.application-card strong,
+.notifications-card strong {
+  color: var(--unit);
+}
+
+.wiki-card span,
+.application-card span,
+.notifications-card span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.wiki-card p {
+  color: var(--ink);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.application-form {
+  display: grid;
+  gap: 9px;
+}
+
+.application-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.application-item,
+.notification-item {
+  padding: 10px;
+  border: 1px solid rgba(139, 172, 210, 0.22);
+  border-radius: 8px;
+  background: rgba(3, 8, 20, 0.46);
+}
+
+.application-item p,
+.notification-item p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  line-height: 1.42;
+}
+
+.notification-item.unread {
+  border-color: rgba(var(--unit-rgb), 0.48);
+  box-shadow: inset 3px 0 0 var(--unit);
+}
+
 .admin-header,
 .admin-card {
   padding: 12px;

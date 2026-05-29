@@ -133,6 +133,8 @@ const state = {
   members: {},
   chats: {},
   notifications: [],
+  wikiPages: {},
+  applications: [],
   owners: {},
   permissions: {}
 };
@@ -180,6 +182,9 @@ const els = {
   membersPanel: document.querySelector("#membersPanel"),
   chatPanel: document.querySelector("#chatPanel"),
   adminPanel: document.querySelector("#adminPanel"),
+  wikiPanel: document.querySelector("#wikiPanel"),
+  applicationsPanel: document.querySelector("#applicationsPanel"),
+  notificationsPanel: document.querySelector("#notificationsPanel"),
   memberDialog: document.querySelector("#memberDialog"),
   memberForm: document.querySelector("#memberForm"),
   memberName: document.querySelector("#memberName"),
@@ -331,6 +336,8 @@ async function loadState() {
       state.members = shared?.members || {};
       state.chats = shared?.chats || {};
       state.notifications = shared?.notifications || [];
+      state.wikiPages = shared?.wikiPages || {};
+      state.applications = shared?.applications || [];
       state.owners = shared?.owners || {};
       state.permissions = shared?.permissions || {};
       if (!shared) saveState();
@@ -347,6 +354,8 @@ async function loadState() {
     state.members = parsed.members || {};
     state.chats = parsed.chats || {};
     state.notifications = parsed.notifications || [];
+    state.wikiPages = parsed.wikiPages || {};
+    state.applications = parsed.applications || [];
     state.owners = parsed.owners || {};
     state.permissions = parsed.permissions || {};
     return;
@@ -371,6 +380,8 @@ function saveState() {
       members: state.members,
       chats: state.chats,
       notifications: state.notifications,
+      wikiPages: state.wikiPages,
+      applications: state.applications,
       owners: state.owners,
       permissions: state.permissions
     })
@@ -386,6 +397,8 @@ function saveState() {
       members: state.members,
       chats: state.chats,
       notifications: state.notifications,
+      wikiPages: state.wikiPages,
+      applications: state.applications,
       owners: state.owners,
       permissions: state.permissions
     })
@@ -474,6 +487,32 @@ function clearSeedData() {
 function addNotification(title, body) {
   state.notifications.unshift({ id: crypto.randomUUID(), title, body, createdAt: Date.now(), read: false });
   state.notifications = state.notifications.slice(0, 60);
+  saveState();
+}
+
+function wikiKey(unitId = state.activeUnit, category = state.category) {
+  return `${unitId}::${category}`;
+}
+
+function getWikiPage() {
+  const key = wikiKey();
+  state.wikiPages[key] ||= {
+    title: `${state.category} - ${state.activeUnit}`,
+    body: "Noch keine offizielle Seite hinterlegt.",
+    updatedBy: "System",
+    updatedAt: Date.now()
+  };
+  return state.wikiPages[key];
+}
+
+function setWikiPage(body) {
+  state.wikiPages[wikiKey()] = {
+    title: `${state.category} - ${state.activeUnit}`,
+    body,
+    updatedBy: state.user.name,
+    updatedAt: Date.now()
+  };
+  addNotification("Wiki aktualisiert", `${state.activeUnit}: ${state.category} wurde aktualisiert.`);
   saveState();
 }
 
@@ -620,13 +659,13 @@ function renderStats(threads) {
 }
 
 function renderThreads() {
-  if (state.view === "admin") {
+  if (["admin", "notifications"].includes(state.view)) {
     renderStats([]);
     els.threadList.innerHTML = "";
     return;
   }
 
-  if (state.activeUnit !== "Holonet" && (state.category === "Mitgliederakten" || state.category === "Chat")) {
+  if (state.activeUnit !== "Holonet" && (state.category === "Mitgliederakten" || state.category === "Chat" || ["Regeln", "Bewaffnung", "Funkcodes"].includes(state.category))) {
     renderStats([]);
     els.threadList.innerHTML = "";
     return;
@@ -827,6 +866,97 @@ function renderChatPanel() {
   `;
 }
 
+function renderWikiPanel() {
+  if (state.view !== "home" || state.activeUnit === "Holonet" || !["Regeln", "Bewaffnung", "Funkcodes"].includes(state.category)) {
+    els.wikiPanel.innerHTML = "";
+    return;
+  }
+  const page = getWikiPage();
+  const editable = roleRank(state.account?.role) >= roleRank(getCategoryPermissions()[state.category] || "admin");
+  els.wikiPanel.innerHTML = `
+    <article class="wiki-card">
+      <header>
+        <div>
+          <strong>${escapeHtml(page.title)}</strong>
+          <span>Zuletzt bearbeitet von ${escapeHtml(page.updatedBy)} - ${formatTime(page.updatedAt)}</span>
+        </div>
+      </header>
+      ${
+        editable
+          ? `<textarea id="wikiEditor" rows="9">${escapeHtml(page.body)}</textarea><button class="primary-button" id="saveWikiButton" type="button">Wiki speichern</button>`
+          : `<p>${escapeHtml(page.body)}</p>`
+      }
+    </article>
+  `;
+}
+
+function renderApplicationsPanel() {
+  if (state.view !== "home" || state.activeUnit !== "Holonet") {
+    els.applicationsPanel.innerHTML = "";
+    return;
+  }
+  const ownApplications = state.applications.filter((application) => application.author === state.user.name || state.account?.role === "owner");
+  els.applicationsPanel.innerHTML = `
+    <article class="application-card">
+      <header>
+        <strong>Einheitsbewerbung</strong>
+        <span>Bewirb dich fuer eine Einheit oder pruefe offene Antraege.</span>
+      </header>
+      <form id="applicationForm" class="application-form">
+        <select id="applicationUnit" required>
+          ${units.filter((unit) => !unit.public).map((unit) => `<option value="${unit.id}">${unit.name}</option>`).join("")}
+        </select>
+        <textarea id="applicationMotivation" required rows="3" maxlength="500" placeholder="Motivation, RP-Erfahrung, Wunschposten"></textarea>
+        <button class="primary-button" type="submit">Bewerbung senden</button>
+      </form>
+      <div class="application-list">
+        ${
+          ownApplications.length
+            ? ownApplications
+                .map(
+                  (application) => `
+                    <div class="application-item" data-application-id="${application.id}">
+                      <strong>${escapeHtml(application.unit)} - ${escapeHtml(application.status)}</strong>
+                      <span>${escapeHtml(application.author)} - ${formatTime(application.createdAt)}</span>
+                      <p>${escapeHtml(application.motivation)}</p>
+                      ${
+                        state.account?.role === "owner"
+                          ? `<div class="action-row"><button class="chip-button" data-application-status="angenommen" type="button">Annehmen</button><button class="chip-button danger" data-application-status="abgelehnt" type="button">Ablehnen</button></div>`
+                          : ""
+                      }
+                    </div>
+                  `
+                )
+                .join("")
+            : `<div class="empty-state">Keine Bewerbungen vorhanden.</div>`
+        }
+      </div>
+    </article>
+  `;
+}
+
+function renderNotificationsPanel() {
+  if (state.view !== "notifications") {
+    els.notificationsPanel.innerHTML = "";
+    return;
+  }
+  els.notificationsPanel.innerHTML = `
+    <article class="notifications-card">
+      <header>
+        <strong>Benachrichtigungen</strong>
+        <button class="chip-button" id="markNotificationsButton" type="button">Alle gelesen</button>
+      </header>
+      ${
+        state.notifications.length
+          ? state.notifications
+              .map((note) => `<div class="notification-item ${note.read ? "" : "unread"}"><strong>${escapeHtml(note.title)}</strong><span>${formatTime(note.createdAt)}</span><p>${escapeHtml(note.body)}</p></div>`)
+              .join("")
+          : `<div class="empty-state">Keine Benachrichtigungen.</div>`
+      }
+    </article>
+  `;
+}
+
 async function loadAdminUsers() {
   if (state.account?.role !== "owner") return;
   const [usersResponse, auditResponse] = await Promise.all([
@@ -958,6 +1088,9 @@ function renderAll() {
   renderMembersPanel();
   renderChatPanel();
   renderAdminPanel();
+  renderWikiPanel();
+  renderApplicationsPanel();
+  renderNotificationsPanel();
   renderThreads();
 }
 
@@ -1179,6 +1312,50 @@ function bindEvents() {
     deleteChatMessage(button.dataset.chatDelete);
   });
 
+  els.wikiPanel.addEventListener("click", (event) => {
+    if (!event.target.closest("#saveWikiButton")) return;
+    const editor = document.querySelector("#wikiEditor");
+    if (!editor) return;
+    setWikiPage(editor.value.trim());
+    renderWikiPanel();
+  });
+
+  els.applicationsPanel.addEventListener("submit", (event) => {
+    const form = event.target.closest("#applicationForm");
+    if (!form) return;
+    event.preventDefault();
+    state.applications.unshift({
+      id: crypto.randomUUID(),
+      author: state.user.name,
+      unit: document.querySelector("#applicationUnit").value,
+      motivation: document.querySelector("#applicationMotivation").value.trim(),
+      status: "offen",
+      createdAt: Date.now()
+    });
+    addNotification("Neue Bewerbung", `${state.user.name} hat eine Bewerbung eingereicht.`);
+    saveState();
+    renderApplicationsPanel();
+  });
+
+  els.applicationsPanel.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-application-status]");
+    if (!button || state.account?.role !== "owner") return;
+    const item = event.target.closest(".application-item");
+    state.applications = state.applications.map((application) =>
+      application.id === item.dataset.applicationId ? { ...application, status: button.dataset.applicationStatus, reviewedBy: state.user.name, reviewedAt: Date.now() } : application
+    );
+    addNotification("Bewerbung entschieden", `Eine Bewerbung wurde ${button.dataset.applicationStatus}.`);
+    saveState();
+    renderApplicationsPanel();
+  });
+
+  els.notificationsPanel.addEventListener("click", (event) => {
+    if (!event.target.closest("#markNotificationsButton")) return;
+    state.notifications = state.notifications.map((note) => ({ ...note, read: true }));
+    saveState();
+    renderAll();
+  });
+
   els.adminPanel.addEventListener("click", async (event) => {
     if (state.account?.role !== "owner") return;
 
@@ -1253,6 +1430,9 @@ function bindEvents() {
     renderTabs();
     renderMembersPanel();
     renderChatPanel();
+    renderWikiPanel();
+    renderApplicationsPanel();
+    renderNotificationsPanel();
     renderThreads();
   });
 
@@ -1413,6 +1593,9 @@ function bindEvents() {
       renderAdminPanel();
       renderMembersPanel();
       renderChatPanel();
+      renderWikiPanel();
+      renderApplicationsPanel();
+      renderNotificationsPanel();
       renderThreads();
     });
   });

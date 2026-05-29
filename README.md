@@ -41,6 +41,9 @@ Siehe [DEPLOYMENT.md](DEPLOYMENT.md).
 - Ranghistorie in Personalakten
 - Adminbereich serverseitig und clientseitig auf Owner beschraenkt
 - Einheitsfarben, Dossier-Design und Comms-Chat-Look
+- Offizielle Wiki-Seiten fuer Regeln, Bewaffnung und Funkcodes
+- Bewerbungssystem fuer Einheiten
+- Benachrichtigungszentrum
 - Erweiterte Akten mit Notizen, Verwarnungen, Auszeichnungen und Einsatzhistorie
 - Automatische Chat-Aktualisierung
 - PWA-Manifest und Service Worker fuer App-Installation
