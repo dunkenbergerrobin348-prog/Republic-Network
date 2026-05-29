@@ -9,6 +9,7 @@ const dataDir = path.join(root, "data");
 const dbPath = path.join(dataDir, "galactic-forum.sqlite");
 const port = Number(process.env.PORT || 4173);
 const maxBodyBytes = 2_000_000;
+const ownerSetupCode = String(process.env.OWNER_SETUP_CODE || "").trim();
 
 const types = {
   ".html": "text/html; charset=utf-8",
@@ -223,7 +224,7 @@ function saveState(payload) {
     notifications: Array.isArray(payload.notifications) ? payload.notifications : [],
     wikiPages: payload.wikiPages && typeof payload.wikiPages === "object" ? payload.wikiPages : {},
     applications: Array.isArray(payload.applications) ? payload.applications : [],
-    owners: payload.owners && typeof payload.owners === "object" ? payload.owners : {},
+    owners: {},
     permissions: payload.permissions && typeof payload.permissions === "object" ? payload.permissions : {}
   };
 
@@ -248,6 +249,7 @@ async function handleApi(request, response, pathname) {
     sendJson(response, 200, {
       ok: true,
       hasUsers: hasUsers(),
+      setupLocked: !hasUsers() && !ownerSetupCode,
       user: sanitizeUser(getAuthUser(request))
     });
     return true;
@@ -261,6 +263,10 @@ async function handleApi(request, response, pathname) {
 
     try {
       const payload = await readJsonBody(request);
+      if (!ownerSetupCode || String(payload.setupCode || "").trim() !== ownerSetupCode) {
+        sendJson(response, 403, { ok: false, error: "Owner-Setup-Code fehlt oder ist falsch" });
+        return true;
+      }
       const username = String(payload.username || "").trim();
       const password = String(payload.password || "");
       const rpName = String(payload.rpName || username).trim();

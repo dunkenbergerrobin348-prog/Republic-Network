@@ -47,7 +47,7 @@ const memberBoardColumns = [
   { id: "reserve", title: "Reserve" }
 ];
 const labelPalette = ["Front", "Ausbildung", "Fuehrung", "Medizin", "Technik", "Disziplin", "Befoerderung", "Beobachten"];
-const ownerCode = "OWNER-ROOT";
+const ownerCode = "";
 
 const seedThreads = [
   {
@@ -238,6 +238,8 @@ const els = {
   authRpName2: document.querySelector("#authRpName2"),
   authRpName3: document.querySelector("#authRpName3"),
   authPassword: document.querySelector("#authPassword"),
+  authSetupCode: document.querySelector("#authSetupCode"),
+  setupCodeField: document.querySelector("#setupCodeField"),
   authError: document.querySelector("#authError"),
   authSubmit: document.querySelector("#authSubmit"),
   authSwitchButton: document.querySelector("#authSwitchButton"),
@@ -276,7 +278,7 @@ async function requireLogin() {
     }
 
     authMode = payload.hasUsers ? "login" : "setup";
-    showAuthDialog();
+    showAuthDialog(payload.setupLocked ? "Owner-Setup ist gesperrt. Setze auf Render die Environment-Variable OWNER_SETUP_CODE und deploye neu." : "");
     return false;
   } catch {
     backendAvailable = false;
@@ -300,6 +302,8 @@ function showAuthDialog(message = "") {
   els.authSwitchButton.hidden = authMode === "setup" || authMode === "offline";
   els.authSwitchButton.textContent = authMode === "register" ? "Zum Login" : "Account erstellen";
   els.registerFields.hidden = !registerMode;
+  els.setupCodeField.hidden = authMode !== "setup";
+  els.authSetupCode.required = authMode === "setup";
   els.authRpName.required = registerMode;
   els.authPassword.autocomplete = registerMode ? "new-password" : "current-password";
   els.authError.textContent = "";
@@ -320,6 +324,7 @@ async function submitAuth() {
       username,
       discordUsername: username,
       password,
+      setupCode: els.authSetupCode.value.trim(),
       rpName: els.authRpName.value.trim(),
       ctNumber: els.authCtNumber.value.trim(),
       rpName2: els.authRpName2.value.trim(),
@@ -376,7 +381,7 @@ async function loadState() {
       state.notifications = shared?.notifications || [];
       state.wikiPages = shared?.wikiPages || {};
       state.applications = shared?.applications || [];
-      state.owners = shared?.owners || {};
+      state.owners = {};
       state.permissions = shared?.permissions || {};
       if (!shared) saveState();
       return;
@@ -401,7 +406,7 @@ async function loadState() {
     state.notifications = parsed.notifications || [];
     state.wikiPages = parsed.wikiPages || {};
     state.applications = parsed.applications || [];
-    state.owners = parsed.owners || {};
+    state.owners = {};
     state.permissions = parsed.permissions || {};
     return;
   }
@@ -434,7 +439,7 @@ function saveState() {
       notifications: state.notifications,
       wikiPages: state.wikiPages,
       applications: state.applications,
-      owners: state.owners,
+      owners: {},
       permissions: state.permissions
     })
   );
@@ -458,7 +463,7 @@ function saveState() {
       notifications: state.notifications,
       wikiPages: state.wikiPages,
       applications: state.applications,
-      owners: state.owners,
+      owners: {},
       permissions: state.permissions
     })
   }).catch(() => {
@@ -700,7 +705,7 @@ function normalizeName(value) {
 }
 
 function isOwner(unitId = state.activeUnit) {
-  return Boolean(state.account?.role === "owner" || state.owners[unitId]?.includes(normalizeName(state.user.name)));
+  return state.account?.role === "owner";
 }
 
 function getUserPermissions(unitId = state.activeUnit) {
@@ -1780,19 +1785,14 @@ function bindEvents() {
     const code = els.accessCode.value.trim().toUpperCase();
     const callsign = els.accessCallsign.value.trim();
 
-    if (!unit || (code !== unit.code && code !== ownerCode)) {
+    if (!unit || code !== unit.code) {
       els.accessError.textContent = "Register abgelehnt: Kennung gehoert nicht zu dieser Einheit.";
       return;
     }
 
-    state.access[unit.id] = { callsign, code: code === ownerCode ? "OWNER" : code, approvedAt: Date.now() };
-    if (code === ownerCode) {
-      state.owners[unit.id] ||= [];
-      const ownerName = normalizeName(callsign);
-      if (!state.owners[unit.id].includes(ownerName)) state.owners[unit.id].push(ownerName);
-    }
+    state.access[unit.id] = { callsign, code, approvedAt: Date.now() };
     state.user.name = callsign;
-    state.user.bio = code === ownerCode ? `${unit.name} Owner` : unit.name;
+    state.user.bio = unit.name;
     state.activeUnit = unit.id;
     state.category = "Alle";
     saveState();
@@ -2620,7 +2620,7 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=28").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=29").catch(() => {});
   }
 
   setInterval(async () => {
