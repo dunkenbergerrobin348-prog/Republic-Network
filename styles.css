@@ -148,7 +148,7 @@ h1 {
 }
 
 .content {
-  padding: 0 14px 92px;
+  padding: 0 14px 142px;
 }
 
 .unit-tabs {
@@ -491,9 +491,9 @@ select:focus {
   transform: translateX(-50%);
   width: min(100%, 460px);
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
-  padding: 8px 12px max(8px, env(safe-area-inset-bottom));
+  padding: 7px 10px max(7px, env(safe-area-inset-bottom));
   background: rgba(4, 10, 24, 0.92);
   border-top: 1px solid var(--line);
   backdrop-filter: blur(14px);
@@ -508,11 +508,11 @@ select:focus {
 }
 
 body:not(.is-owner) .bottom-nav {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .nav-item {
-  min-height: 54px;
+  min-height: 48px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -523,8 +523,12 @@ body:not(.is-owner) .bottom-nav {
 }
 
 .nav-item span {
-  font-size: 1.05rem;
+  font-size: 0.96rem;
   font-weight: 900;
+}
+
+.nav-item small {
+  font-size: 0.72rem;
 }
 
 .nav-item.active {
