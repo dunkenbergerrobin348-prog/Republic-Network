@@ -1,42 +1,9 @@
-const http = require("http");
-const fs = require("fs");
-const path = require("path");
-
-const root = __dirname;
-const port = Number(process.env.PORT || 4173);
-const types = {
-  ".html": "text/html; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".webmanifest": "application/manifest+json; charset=utf-8",
-  ".svg": "image/svg+xml"
-};
-
-http
-  .createServer((request, response) => {
-    const url = new URL(request.url, `http://localhost:${port}`);
-    const filePath = path.join(root, url.pathname === "/" ? "index.html" : url.pathname);
-
-    if (!filePath.startsWith(root)) {
-      response.writeHead(403);
-      response.end("Forbidden");
-      return;
-    }
-
-    fs.readFile(filePath, (error, data) => {
-      if (error) {
-        response.writeHead(404);
-        response.end("Not found");
-        return;
-      }
-
-      response.writeHead(200, {
-        "cache-control": "no-store, no-cache, must-revalidate",
-        "content-type": types[path.extname(filePath)] || "application/octet-stream"
-      });
-      response.end(data);
-    });
-  })
-  .listen(port, () => {
-    console.log(`Galactic Forum laeuft auf http://localhost:${port}`);
-  });
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="28" fill="#050816"/>
+  <circle cx="32" cy="29" r="2" fill="#f6d365"/>
+  <circle cx="95" cy="31" r="1.5" fill="#4fd1ff"/>
+  <circle cx="104" cy="92" r="2" fill="#ffffff"/>
+  <path d="M30 38h68a12 12 0 0 1 12 12v28a12 12 0 0 1-12 12H69l-24 18V90H30a12 12 0 0 1-12-12V50a12 12 0 0 1 12-12Z" fill="#101a33" stroke="#f6d365" stroke-width="5"/>
+  <path d="M41 64h46" stroke="#4fd1ff" stroke-width="6" stroke-linecap="round"/>
+  <path d="M52 78h24" stroke="#f6d365" stroke-width="5" stroke-linecap="round"/>
+</svg>

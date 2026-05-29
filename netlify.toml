@@ -1,17 +1,13 @@
-{
-  "name": "Galactic Forum",
-  "short_name": "Holonet",
-  "description": "Eine mobile Sci-Fi-Forum-App mit Themen, Antworten, Suche und Kategorien.",
-  "start_url": "./index.html",
-  "display": "standalone",
-  "background_color": "#050816",
-  "theme_color": "#050816",
-  "icons": [
-    {
-      "src": "icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    }
-  ]
-}
+[build]
+  publish = "."
+
+[[headers]]
+  for = "/service-worker.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
