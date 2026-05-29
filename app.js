@@ -200,6 +200,7 @@ const els = {
   applicationsPanel: document.querySelector("#applicationsPanel"),
   notificationsPanel: document.querySelector("#notificationsPanel"),
   introVideo: document.querySelector("#introVideo"),
+  introMovie: document.querySelector("#introMovie"),
   skipIntroButton: document.querySelector("#skipIntroButton"),
   memberDialog: document.querySelector("#memberDialog"),
   memberForm: document.querySelector("#memberForm"),
@@ -1525,10 +1526,13 @@ function bindEvents() {
     els.introVideo.classList.add("playing");
     const closeIntro = () => {
       els.introVideo.classList.add("hidden");
+      els.introMovie?.pause();
       sessionStorage.setItem("galactic-intro-seen", "1");
     };
     els.skipIntroButton?.addEventListener("click", closeIntro);
-    setTimeout(closeIntro, 5800);
+    els.introMovie?.addEventListener("ended", closeIntro, { once: true });
+    els.introMovie?.play().catch(() => {});
+    setTimeout(closeIntro, 12000);
   } else if (els.introVideo) {
     els.introVideo.classList.add("hidden");
   }
@@ -2246,7 +2250,7 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=25").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=26").catch(() => {});
   }
 
   setInterval(async () => {

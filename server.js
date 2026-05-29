@@ -17,6 +17,7 @@ const types = {
   ".json": "application/json; charset=utf-8",
   ".webmanifest": "application/manifest+json; charset=utf-8",
   ".svg": "image/svg+xml",
+  ".mp4": "video/mp4",
   ".md": "text/markdown; charset=utf-8"
 };
 

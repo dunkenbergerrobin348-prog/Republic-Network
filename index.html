@@ -5,36 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#050816" />
     <title>Galactic Forum</title>
-    <link rel="manifest" href="manifest.webmanifest?v=25" />
-    <link rel="stylesheet" href="styles.css?v=25" />
+    <link rel="manifest" href="manifest.webmanifest?v=26" />
+    <link rel="stylesheet" href="styles.css?v=26" />
   </head>
   <body>
     <div class="intro-video" id="introVideo" aria-label="Republic Network Intro">
-      <div class="intro-stars"></div>
-      <div class="intro-fleet">
-        <i class="ship cruiser"></i>
-        <i class="ship fighter fighter-one"></i>
-        <i class="ship fighter fighter-two"></i>
-        <i class="ship enemy enemy-one"></i>
-        <i class="ship enemy enemy-two"></i>
-      </div>
-      <div class="intro-bolts">
-        <i></i><i></i><i></i><i></i><i></i><i></i>
-      </div>
-      <div class="intro-ground">
-        <div class="trooper-line">
-          <i></i><i></i><i></i>
-        </div>
-        <div class="blast blast-one"></div>
-        <div class="blast blast-two"></div>
-        <div class="droid-line">
-          <i></i><i></i><i></i>
-        </div>
-      </div>
+      <video id="introMovie" class="intro-movie" autoplay muted playsinline preload="auto">
+        <source src="assets/intro.mp4?v=26" type="video/mp4" />
+      </video>
       <div class="intro-holo">
         <span>Republic Network</span>
         <strong>Galactic Forum</strong>
-        <p>Gefechtskanal wird synchronisiert</p>
+        <p>Gefechtskanal wird gestartet</p>
       </div>
       <button id="skipIntroButton" type="button">Ueberspringen</button>
     </div>
@@ -281,6 +263,6 @@
         }));
       }
     </script>
-    <script src="app.js?v=25"></script>
+    <script src="app.js?v=26"></script>
   </body>
 </html>
