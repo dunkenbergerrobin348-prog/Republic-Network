@@ -107,6 +107,8 @@ const seedThreads = [
   }
 ];
 
+const seedThreadTitles = new Set(seedThreads.map((thread) => thread.title));
+
 const state = {
   activeUnit: "Holonet",
   pendingUnit: null,
@@ -298,6 +300,36 @@ function setChatMessages(unitId, messages) {
   saveState();
 }
 
+function deleteThread(threadId) {
+  state.threads = state.threads.filter((thread) => thread.id !== threadId);
+  saveState();
+  renderAll();
+}
+
+function deleteMember(memberId) {
+  setMembers(
+    state.activeUnit,
+    getMembers().filter((member) => member.id !== memberId)
+  );
+  renderMembersPanel();
+  renderStats([]);
+}
+
+function deleteChatMessage(messageId) {
+  setChatMessages(
+    state.activeUnit,
+    getChatMessages().filter((message) => message.id !== messageId)
+  );
+  renderChatPanel();
+  renderStats([]);
+}
+
+function clearSeedData() {
+  state.threads = state.threads.filter((thread) => !seedThreadTitles.has(thread.title));
+  saveState();
+  renderAll();
+}
+
 function rankLabel(rank) {
   return `${rank.name} (${rank.code})`;
 }
@@ -460,6 +492,7 @@ function renderThreads() {
           <div class="action-row">
             <button class="chip-button ${thread.liked ? "liked" : ""}" data-action="like">Signal ${thread.likes}</button>
             <button class="chip-button" data-action="open">Antworten ${thread.replies.length}</button>
+            ${isOwner() ? `<button class="chip-button danger" data-action="delete">Loeschen</button>` : ""}
           </div>
         </article>
       `
@@ -490,6 +523,7 @@ function renderMembersPanel() {
       isOwner() && members.length
         ? `<section class="rights-panel">
             <strong>Rechteverwaltung</strong>
+            <button class="chip-button danger" id="clearSeedDataButton" type="button">Testdaten bereinigen</button>
             ${members
               .map((member) => {
                 const key = normalizeName(member.name);
@@ -535,6 +569,7 @@ function renderMembersPanel() {
                     <div class="action-row">
                       ${canPromoteMembers() ? `<button class="chip-button" data-member-action="promote" type="button">Befoerdern</button>` : ""}
                       ${canPromoteMembers() ? `<button class="chip-button" data-member-action="demote" type="button">Degradieren</button>` : ""}
+                      ${canManageRecords() ? `<button class="chip-button danger" data-member-action="delete" type="button">Akte loeschen</button>` : ""}
                     </div>
                   </article>
                 `;
@@ -572,6 +607,7 @@ function renderChatPanel() {
                       <span>${formatTime(message.createdAt)}</span>
                     </header>
                     <p>${escapeHtml(message.body)}</p>
+                    ${isOwner() ? `<button class="chip-button danger compact" data-chat-delete="${message.id}" type="button">Loeschen</button>` : ""}
                   </article>
                 `
               )
@@ -712,6 +748,12 @@ function bindEvents() {
   });
 
   els.membersPanel.addEventListener("click", (event) => {
+    if (event.target.closest("#clearSeedDataButton")) {
+      if (!isOwner()) return;
+      clearSeedData();
+      return;
+    }
+
     if (event.target.closest("#addMemberButton")) {
       if (!canManageRecords()) return;
       renderMemberRankOptions();
@@ -722,8 +764,13 @@ function bindEvents() {
 
     const actionButton = event.target.closest("[data-member-action]");
     if (!actionButton) return;
-    if (!canPromoteMembers()) return;
     const card = event.target.closest(".member-card");
+    if (actionButton.dataset.memberAction === "delete") {
+      if (!canManageRecords()) return;
+      deleteMember(card.dataset.memberId);
+      return;
+    }
+    if (!canPromoteMembers()) return;
     const direction = actionButton.dataset.memberAction === "promote" ? -1 : 1;
     changeMemberRank(card.dataset.memberId, direction);
   });
@@ -774,6 +821,12 @@ function bindEvents() {
     setChatMessages(state.activeUnit, messages);
     renderChatPanel();
     renderStats([]);
+  });
+
+  els.chatPanel.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-chat-delete]");
+    if (!button || !isOwner()) return;
+    deleteChatMessage(button.dataset.chatDelete);
   });
 
   els.memberForm.addEventListener("submit", (event) => {
@@ -829,6 +882,12 @@ function bindEvents() {
         thread.saved = !thread.saved;
         return thread;
       });
+      return;
+    }
+
+    if (action === "delete") {
+      if (!isOwner()) return;
+      deleteThread(threadId);
       return;
     }
 
@@ -952,7 +1011,7 @@ async function boot() {
   bindEvents();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=12").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=13").catch(() => {});
   }
 }
 

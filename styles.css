@@ -408,6 +408,19 @@ select:focus {
   background: rgba(255, 79, 109, 0.1);
 }
 
+.chip-button.danger {
+  color: #ffd6de;
+  border-color: rgba(255, 79, 109, 0.55);
+  background: rgba(255, 79, 109, 0.16);
+}
+
+.chip-button.compact {
+  min-height: 30px;
+  margin-top: 8px;
+  padding: 0 9px;
+  font-size: 0.78rem;
+}
+
 .bottom-nav {
   position: fixed;
   left: 50%;
