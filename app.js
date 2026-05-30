@@ -168,6 +168,7 @@ let backendAvailable = false;
 let authToken = localStorage.getItem(authTokenKey) || "";
 let authMode = "login";
 let eventsBound = false;
+let deferredInstallPrompt = null;
 
 const els = {
   unitTabs: document.querySelector("#unitTabs"),
@@ -193,6 +194,7 @@ const els = {
   backButton: document.querySelector("#backButton"),
   saveThreadButton: document.querySelector("#saveThreadButton"),
   profileButton: document.querySelector("#profileButton"),
+  installAppButton: document.querySelector("#installAppButton"),
   profileDialog: document.querySelector("#profileDialog"),
   profileForm: document.querySelector("#profileForm"),
   displayName: document.querySelector("#displayName"),
@@ -1842,6 +1844,34 @@ function bindEvents() {
   if (eventsBound) return;
   eventsBound = true;
 
+  document.addEventListener("click", (event) => {
+    const closeButton = event.target.closest("[data-dialog-close]");
+    if (!closeButton) return;
+    closeButton.closest("dialog")?.close();
+  });
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    if (els.installAppButton) els.installAppButton.hidden = false;
+  });
+
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    if (els.installAppButton) els.installAppButton.hidden = true;
+  });
+
+  els.installAppButton?.addEventListener("click", async () => {
+    if (!deferredInstallPrompt) {
+      alert("Falls dein Browser keinen Installationsdialog zeigt: Menue oeffnen und 'App installieren' oder 'Zum Startbildschirm hinzufuegen' waehlen.");
+      return;
+    }
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice.catch(() => {});
+    deferredInstallPrompt = null;
+    els.installAppButton.hidden = true;
+  });
+
   if (els.introVideo && !sessionStorage.getItem("galactic-intro-seen")) {
     els.introVideo.classList.add("playing");
     const closeIntro = () => {
@@ -2874,7 +2904,7 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=35").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=36").catch(() => {});
   }
 
   setInterval(async () => {

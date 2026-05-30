@@ -11,6 +11,8 @@ const requiredFiles = [
   "server.js",
   "assets/intro.mp4",
   "icon.svg",
+  "icon-192.png",
+  "icon-512.png",
   "netlify.toml",
   "vercel.json",
   "_headers"
@@ -25,12 +27,12 @@ const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const worker = fs.readFileSync(path.join(root, "service-worker.js"), "utf8");
 const manifest = fs.readFileSync(path.join(root, "manifest.webmanifest"), "utf8");
 
-for (const needle of ["styles.css?v=35", "app.js?v=35", "manifest.webmanifest?v=35", "assets/intro.mp4?v=26"]) {
+for (const needle of ["styles.css?v=36", "app.js?v=36", "manifest.webmanifest?v=36", "assets/intro.mp4?v=26"]) {
   if (!html.includes(needle)) throw new Error(`index.html referenziert ${needle} nicht.`);
 }
 
-if (!worker.includes("galactic-forum-v35")) {
-  throw new Error("Service Worker Cache-Version ist nicht v35.");
+if (!worker.includes("galactic-forum-v36")) {
+  throw new Error("Service Worker Cache-Version ist nicht v36.");
 }
 
 JSON.parse(manifest);

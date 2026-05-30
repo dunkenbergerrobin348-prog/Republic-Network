@@ -201,7 +201,22 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 14px;
   padding: max(20px, env(safe-area-inset-top)) 18px 14px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.install-button[hidden] {
+  display: none;
+}
+
+.install-button {
+  white-space: nowrap;
 }
 
 .eyebrow {
@@ -1700,10 +1715,16 @@ dialog::backdrop {
     width: min(100%, 1180px);
     min-height: calc(100vh - 56px);
     display: grid;
-    grid-template-rows: auto 1fr auto;
+    grid-template-columns: 176px minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "top top"
+      "nav content";
+    overflow: visible;
   }
 
   .topbar {
+    grid-area: top;
     padding: 24px 28px 18px;
   }
 
@@ -1712,13 +1733,40 @@ dialog::backdrop {
   }
 
   .content {
-    padding: 0 28px 108px;
+    grid-area: content;
+    min-width: 0;
+    padding: 0 28px 32px;
   }
 
   .bottom-nav {
-    width: min(calc(100% - 56px), 1180px);
-    bottom: 28px;
-    padding: 8px 14px;
+    position: sticky;
+    grid-area: nav;
+    top: 28px;
+    left: auto;
+    bottom: auto;
+    transform: none;
+    width: auto;
+    align-self: start;
+    display: grid;
+    grid-template-columns: 1fr !important;
+    gap: 8px;
+    margin: 0 0 28px 28px;
+    padding: 12px;
+    border-top: 0;
+    border-right: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(4, 10, 24, 0.78);
+  }
+
+  .nav-item {
+    grid-template-columns: 34px 1fr;
+    justify-items: start;
+    padding: 0 12px;
+  }
+
+  .nav-item small {
+    font-size: 0.82rem;
+    font-weight: 800;
   }
 
   .unit-tabs,
@@ -1755,7 +1803,7 @@ dialog::backdrop {
   }
 
   .members-panel[data-subview="board"] .member-card {
-    max-height: 300px;
+    max-height: 320px;
   }
 
   .thread-list {
