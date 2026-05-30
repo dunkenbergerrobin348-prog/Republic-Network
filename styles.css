@@ -566,6 +566,7 @@ select:focus {
 
 .action-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
 }
@@ -1017,6 +1018,7 @@ dialog::backdrop {
 .member-column-list {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .empty-column {
@@ -1093,12 +1095,23 @@ dialog::backdrop {
 }
 
 .member-card {
+  min-width: 0;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background:
     linear-gradient(135deg, rgba(79, 209, 255, 0.09), transparent 36%),
     rgba(9, 18, 38, 0.84);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.member-card header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
 }
 
 .member-card.dossier {
@@ -1119,6 +1132,10 @@ dialog::backdrop {
 .members-panel[data-subview="board"] .member-card,
 .members-panel[data-subview="akten"] .member-card {
   padding: 10px;
+}
+
+.members-panel[data-subview="board"] .member-card {
+  max-height: 330px;
 }
 
 .members-panel[data-subview="board"] .member-card.dossier::after,
@@ -1228,6 +1245,7 @@ dialog::backdrop {
   background: rgba(3, 8, 20, 0.42);
   color: var(--muted);
   font-size: 0.86rem;
+  overflow-wrap: anywhere;
 }
 
 .training-item input {
@@ -1670,5 +1688,97 @@ dialog::backdrop {
   .bottom-nav {
     bottom: 24px;
     border-radius: 0 0 24px 24px;
+  }
+}
+
+@media (min-width: 980px) {
+  body {
+    padding: 28px;
+  }
+
+  .app-shell {
+    width: min(100%, 1180px);
+    min-height: calc(100vh - 56px);
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+  }
+
+  .topbar {
+    padding: 24px 28px 18px;
+  }
+
+  h1 {
+    font-size: 2.05rem;
+  }
+
+  .content {
+    padding: 0 28px 108px;
+  }
+
+  .bottom-nav {
+    width: min(calc(100% - 56px), 1180px);
+    bottom: 28px;
+    padding: 8px 14px;
+  }
+
+  .unit-tabs,
+  .category-tabs,
+  .sub-tabs,
+  .quick-filter-row {
+    overflow-x: visible;
+    flex-wrap: wrap;
+  }
+
+  .overview-panel,
+  .admin-grid,
+  .dashboard-strip,
+  .stats-strip,
+  .command-grid,
+  .member-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .member-board {
+    grid-auto-flow: initial;
+    grid-auto-columns: initial;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    align-items: start;
+    overflow: visible;
+  }
+
+  .members-panel[data-subview="akten"] .member-board {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+
+  .member-column {
+    min-width: 0;
+  }
+
+  .members-panel[data-subview="board"] .member-card {
+    max-height: 300px;
+  }
+
+  .thread-list {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    align-items: start;
+  }
+
+  .thread-card,
+  .member-card,
+  .command-panel,
+  .wiki-panel,
+  .applications-panel,
+  .notifications-panel,
+  .admin-panel {
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+  }
+}
+
+@media (min-width: 1240px) {
+  .overview-panel,
+  .admin-grid,
+  .dashboard-strip,
+  .command-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
