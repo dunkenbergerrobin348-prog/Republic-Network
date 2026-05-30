@@ -753,6 +753,7 @@ function canManageAccounts() {
 
 function getUserPermissions(unitId = state.activeUnit) {
   if (isOwner(unitId)) return { records: true, promote: true, rights: true };
+  if (state.account?.role === "admin") return { records: true, promote: false, rights: false };
   const direct = state.permissions[unitId]?.[normalizeName(state.user.name)];
   if (direct) return direct;
   const member = getMembers(unitId).find((item) => normalizeName(item.name) === normalizeName(state.user.name));
@@ -2904,7 +2905,7 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=36").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=37").catch(() => {});
   }
 
   setInterval(async () => {
