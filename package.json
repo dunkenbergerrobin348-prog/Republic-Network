@@ -9,6 +9,9 @@
     "static": "node dev-server.js",
     "check": "node --check app.js && node --check server.js && node --check dev-server.js && node scripts/check-deploy.js"
   },
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
   "engines": {
     "node": ">=24"
   }

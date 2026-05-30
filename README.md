@@ -1,6 +1,6 @@
 # Galactic Forum
 
-Mobile Sci-Fi Roleplay Forum PWA mit Node-Backend, SQLite-Datenbank, Einheitsbereichen, Registerpruefung, Mitgliederakten, Rechten, Beitraegen und Einheitschat.
+Mobile Sci-Fi Roleplay Forum PWA mit Node-Backend, PostgreSQL/SQLite-Datenbank, Einheitsbereichen, Registerpruefung, Mitgliederakten, Rechten, Beitraegen und Einheitschat.
 
 ## Starten
 
@@ -33,14 +33,14 @@ Siehe [DEPLOYMENT.md](DEPLOYMENT.md).
 - Einheitschat pro Einheit
 - Login-System mit erstem Owner-Setup
 - Discord-Login per OAuth2 (`identify`, `email`)
-- Account-Freischaltung und Einheitszuweisung durch Owner
+- Account-Freischaltung und Einheitszuweisung durch Admins und Owner
 - Admin-Dashboard fuer Nutzerstatus, Rollen und Einheiten
 - Rollen `user`, `admin`, `owner`
 - Thread-Erstellung pro Einheitskategorie auf User/Admin/Owner begrenzbar
 - Audit-Log fuer Admin-Aktionen
 - Owner-Passwortreset fuer Nutzer
 - Ranghistorie in Personalakten
-- Adminbereich serverseitig und clientseitig auf Owner beschraenkt
+- Rollenvergabe und Passwortreset serverseitig auf Owner beschraenkt
 - Einheitsfarben, Dossier-Design und Comms-Chat-Look
 - Offizielle Wiki-Seiten fuer Regeln, Bewaffnung und Funkcodes
 - Bewerbungssystem fuer Einheiten
@@ -51,4 +51,4 @@ Siehe [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Hinweis
 
-Gemeinsame Daten werden ueber `server.js` in `data/galactic-forum.sqlite` gespeichert. Profil und aktueller Registerzugriff bleiben lokal im Browser. Fuer oeffentliche Nutzung sollte als naechstes ein echtes Account-/Passwortsystem ergaenzt werden.
+Online nutzt das Backend automatisch PostgreSQL, sobald `DATABASE_URL` gesetzt ist. Lokal faellt es auf `data/galactic-forum.sqlite` zurueck. Der Owner-Code wird nur fuer das erste Owner-Setup benoetigt; normale Nutzer registrieren sich ohne Owner-Code und werden danach durch Admins oder Owner freigeschaltet.

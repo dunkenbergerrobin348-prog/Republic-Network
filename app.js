@@ -745,6 +745,10 @@ function isOwner(unitId = state.activeUnit) {
   return state.account?.role === "owner";
 }
 
+function canManageAccounts() {
+  return ["owner", "admin"].includes(state.account?.role);
+}
+
 function getUserPermissions(unitId = state.activeUnit) {
   if (isOwner(unitId)) return { records: true, promote: true, rights: true };
   const direct = state.permissions[unitId]?.[normalizeName(state.user.name)];
@@ -897,7 +901,7 @@ function renderOverviewPanel() {
       <div class="quick-actions">
         ${unitsWithAccess.slice(0, 4).map((unit) => `<button class="chip-button" data-jump-unit="${unit.id}" type="button">${unit.name}</button>`).join("")}
         <button class="chip-button" data-jump-view="notifications" type="button">Info</button>
-        ${state.account?.role === "owner" ? `<button class="chip-button" data-jump-view="admin" type="button">Admin</button>` : ""}
+        ${canManageAccounts() ? `<button class="chip-button" data-jump-view="admin" type="button">Admin</button>` : ""}
       </div>
       <div class="command-lists">
         <div><strong>Letzte Missionen</strong>${latestMissions.length ? latestMissions.map((report) => `<p>${escapeHtml(report.unit)}: ${escapeHtml(report.title)}</p>`).join("") : `<p>Keine Missionsberichte.</p>`}</div>
@@ -1486,18 +1490,19 @@ function renderNotificationsPanel() {
 }
 
 async function loadAdminUsers() {
-  if (state.account?.role !== "owner") return;
-  const [usersResponse, auditResponse] = await Promise.all([
-    apiFetch("./api/admin/users", { cache: "no-store" }),
-    apiFetch("./api/admin/audit", { cache: "no-store" })
-  ]);
+  if (!canManageAccounts()) return;
+  const requests = [apiFetch("./api/admin/users", { cache: "no-store" })];
+  if (isOwner()) requests.push(apiFetch("./api/admin/audit", { cache: "no-store" }));
+  const [usersResponse, auditResponse] = await Promise.all(requests);
   if (usersResponse.ok) {
     const payload = await usersResponse.json();
     state.adminUsers = payload.users || [];
   }
-  if (auditResponse.ok) {
+  if (auditResponse?.ok) {
     const payload = await auditResponse.json();
     state.auditEntries = payload.entries || [];
+  } else if (!isOwner()) {
+    state.auditEntries = [];
   }
 }
 
@@ -1507,7 +1512,7 @@ function renderAdminPanel() {
     return;
   }
 
-  if (state.account?.role !== "owner") {
+  if (!canManageAccounts()) {
     state.view = "home";
     state.adminUsers = [];
     state.auditEntries = [];
@@ -1584,7 +1589,7 @@ function renderAdminPanel() {
                   </select>
                 </label>
                 <label>Rolle
-                  <select data-admin-field="role">
+                  <select data-admin-field="role" ${isOwner() ? "" : "disabled"}>
                     ${["user", "admin", "owner"].map((role) => `<option value="${role}" ${user.role === role ? "selected" : ""}>${role}</option>`).join("")}
                   </select>
                 </label>
@@ -1607,16 +1612,16 @@ function renderAdminPanel() {
                 <button class="chip-button" data-account-status="pending" type="button">Warten</button>
                 <button class="chip-button danger" data-account-status="blocked" type="button">Blockieren</button>
               </div>
-              <div class="action-row">
+              ${isOwner() ? `<div class="action-row">
                 <button class="chip-button" data-account-role="user" type="button">User</button>
                 <button class="chip-button" data-account-role="admin" type="button">Admin</button>
                 <button class="chip-button danger" data-account-role="owner" type="button">Owner</button>
-              </div>
-              <label class="password-reset">Neues Passwort
+              </div>` : ""}
+              ${isOwner() ? `<label class="password-reset">Neues Passwort
                 <input data-password-reset type="password" minlength="6" placeholder="Optional" />
-              </label>
+              </label>` : ""}
               <button class="primary-button" data-admin-save type="button">Speichern</button>
-              <button class="chip-button danger full-width" data-password-save type="button">Passwort setzen</button>
+              ${isOwner() ? `<button class="chip-button danger full-width" data-password-save type="button">Passwort setzen</button>` : ""}
             </article>
           `
         )
@@ -2335,7 +2340,7 @@ function bindEvents() {
 
   els.applicationsPanel.addEventListener("click", (event) => {
     const button = event.target.closest("[data-application-save]");
-    if (!button || state.account?.role !== "owner") return;
+    if (!button || !isOwner()) return;
     const item = event.target.closest(".application-item");
     const status = item.querySelector("[data-application-next]").value;
     const comment = item.querySelector("[data-application-comment]").value.trim();
@@ -2362,7 +2367,7 @@ function bindEvents() {
   });
 
   els.adminPanel.addEventListener("click", async (event) => {
-    if (state.account?.role !== "owner") return;
+    if (!canManageAccounts()) return;
 
     const adminSubView = event.target.closest("[data-admin-subview]");
     if (adminSubView) {
@@ -2507,7 +2512,7 @@ function bindEvents() {
   });
 
   els.adminPanel.addEventListener("input", (event) => {
-    if (!event.target.closest("#ownerGlobalSearch") || state.account?.role !== "owner") return;
+    if (!event.target.closest("#ownerGlobalSearch") || !canManageAccounts()) return;
     const query = event.target.value.trim().toLowerCase();
     const target = document.querySelector("#ownerSearchResults");
     if (!target) return;
@@ -2839,7 +2844,7 @@ function bindEvents() {
 
   els.navItems.forEach((button) => {
     button.addEventListener("click", async () => {
-      if (button.dataset.view === "admin" && state.account?.role !== "owner") return;
+      if (button.dataset.view === "admin" && !canManageAccounts()) return;
       state.view = button.dataset.view;
       state.threadLimit = threadPageSize;
       if (state.view === "admin") await loadAdminUsers();
@@ -2869,7 +2874,7 @@ async function boot() {
   renderAll();
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js?v=33").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=34").catch(() => {});
   }
 
   setInterval(async () => {
@@ -2877,7 +2882,7 @@ async function boot() {
     const activeElement = document.activeElement;
     if (activeElement && ["INPUT", "TEXTAREA", "SELECT"].includes(activeElement.tagName)) return;
     await loadState();
-    if (state.account?.role !== "owner" && state.view === "admin") {
+    if (!canManageAccounts() && state.view === "admin") {
       state.view = "home";
       state.adminUsers = [];
       state.auditEntries = [];

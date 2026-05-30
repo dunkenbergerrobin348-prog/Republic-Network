@@ -1,10 +1,10 @@
-const CACHE_NAME = "galactic-forum-v33";
+const CACHE_NAME = "galactic-forum-v34";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=33",
-  "./app.js?v=33",
-  "./manifest.webmanifest?v=33",
+  "./styles.css?v=34",
+  "./app.js?v=34",
+  "./manifest.webmanifest?v=34",
   "./assets/intro.mp4?v=26",
   "./icon.svg"
 ];

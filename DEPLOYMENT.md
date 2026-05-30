@@ -1,6 +1,6 @@
 # Galactic Forum online stellen
 
-Diese App hat jetzt ein Node-Backend mit SQLite-Datenbank. Fuer gemeinsame Online-Daten muss sie auf einem Host laufen, der Node.js ausfuehren und Dateien dauerhaft speichern kann.
+Diese App hat ein Node-Backend mit PostgreSQL fuer Render/Online-Betrieb und SQLite als lokalen Fallback. Fuer gemeinsame Online-Daten muss sie auf einem Host laufen, der Node.js ausfuehren und eine Datenbank bereitstellen kann.
 
 ## Vor dem Upload pruefen
 
@@ -23,7 +23,8 @@ http://localhost:4173
 ## Backend-Dateien
 
 - `server.js` liefert die App aus und stellt `/api/state` bereit.
-- `data/galactic-forum.sqlite` wird beim Start automatisch erstellt.
+- Wenn `DATABASE_URL` gesetzt ist, nutzt das Backend PostgreSQL.
+- Ohne `DATABASE_URL` wird lokal `data/galactic-forum.sqlite` automatisch erstellt.
 - `app.js` speichert Beitraege, Chats, Akten, Owner und Rechte ueber das Backend.
 
 ## Geeignete Hosting-Anbieter
@@ -44,7 +45,8 @@ Geeignet sind z.B. Render, Railway, Fly.io, ein VPS oder ein eigener Server mit 
 npm start
 ```
 
-7. Einen persistenten Disk/Mount fuer den Ordner `data` anlegen, wenn die Daten nach Deploys erhalten bleiben sollen.
+8. In Render eine PostgreSQL-Datenbank erstellen.
+9. Beim Web Service die Environment Variable `DATABASE_URL` auf die Internal Database URL der PostgreSQL-Datenbank setzen.
 
 ## Environment Variablen
 
@@ -52,6 +54,12 @@ Setze fuer den Owner-Schutz mindestens:
 
 ```text
 OWNER_SETUP_CODE=dein-geheimer-owner-code
+```
+
+Fuer dauerhafte Online-Daten:
+
+```text
+DATABASE_URL=postgresql://...
 ```
 
 Fuer Discord-Login brauchst du in der Discord Developer Console eine OAuth2-App und bei Render diese Variablen:
@@ -135,8 +143,8 @@ _headers
 
 Beim ersten Oeffnen nach dem Deploy erscheint ein Setup-Login. Dort erstellst du den ersten Owner-Account. Danach muessen sich Nutzer vor der App anmelden.
 
-Neue Nutzer koennen sich selbst registrieren. Sie bleiben zuerst auf `pending`, bis ein Owner sie im Admin-Dashboard freischaltet und Einheiten zuweist.
+Neue Nutzer koennen sich selbst ohne Owner-Code registrieren. Sie bleiben zuerst auf `pending`, bis ein Admin oder Owner sie im Admin-Dashboard freischaltet und Einheiten zuweist. Nur Owner koennen Rollen wie `admin` oder `owner` vergeben und Passwoerter zuruecksetzen.
 
 ## Wichtige Einschraenkung
 
-Das Backend speichert gemeinsame Daten in SQLite und Accounts mit Passwort-Hashing. Die Einheits-Registerpruefung bleibt zusaetzlich ein RP-System innerhalb der App.
+Das Backend speichert gemeinsame Daten online in PostgreSQL und lokal in SQLite. Accounts nutzen Passwort-Hashing. Die Einheits-Registerpruefung bleibt zusaetzlich ein RP-System innerhalb der App.

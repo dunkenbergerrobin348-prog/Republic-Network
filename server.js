@@ -7,6 +7,8 @@ const { DatabaseSync } = require("node:sqlite");
 const root = __dirname;
 const dataDir = path.join(root, "data");
 const dbPath = path.join(dataDir, "galactic-forum.sqlite");
+const databaseUrl = String(process.env.DATABASE_URL || "").trim();
+const usePostgres = Boolean(databaseUrl);
 const port = Number(process.env.PORT || 4173);
 const maxBodyBytes = 2_000_000;
 const ownerSetupCode = String(process.env.OWNER_SETUP_CODE || "").trim();
@@ -27,68 +29,161 @@ const types = {
 
 fs.mkdirSync(dataDir, { recursive: true });
 
-const db = new DatabaseSync(dbPath);
-db.exec(`
-  CREATE TABLE IF NOT EXISTS app_state (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    data TEXT NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  );
+let sqliteDb = null;
+let pgPool = null;
 
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    password_salt TEXT NOT NULL,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'member',
-    discord_username TEXT NOT NULL DEFAULT '',
-    discord_id TEXT NOT NULL DEFAULT '',
-    discord_avatar TEXT NOT NULL DEFAULT '',
-    email TEXT NOT NULL DEFAULT '',
-    rp_name TEXT NOT NULL DEFAULT '',
-    ct_number TEXT NOT NULL DEFAULT '',
-    rp_name_2 TEXT NOT NULL DEFAULT '',
-    rp_name_3 TEXT NOT NULL DEFAULT '',
-    account_status TEXT NOT NULL DEFAULT 'pending',
-    unit_access TEXT NOT NULL DEFAULT '[]',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  );
+function toPgSql(sql) {
+  let index = 0;
+  return sql.replace(/\?/g, () => `$${++index}`);
+}
 
-  CREATE TABLE IF NOT EXISTS sessions (
-    token TEXT PRIMARY KEY,
-    user_id INTEGER NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expires_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
+async function dbExec(sql) {
+  if (usePostgres) {
+    await pgPool.query(sql);
+    return;
+  }
+  sqliteDb.exec(sql);
+}
 
-  CREATE TABLE IF NOT EXISTS audit_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    actor_id INTEGER,
-    actor_name TEXT NOT NULL DEFAULT '',
-    action TEXT NOT NULL,
-    target TEXT NOT NULL DEFAULT '',
-    details TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  );
-`);
+async function dbGet(sql, params = []) {
+  if (usePostgres) {
+    const result = await pgPool.query(toPgSql(sql), params);
+    return result.rows[0] || null;
+  }
+  return sqliteDb.prepare(sql).get(...params) || null;
+}
 
-for (const migration of [
-  "ALTER TABLE users ADD COLUMN discord_username TEXT NOT NULL DEFAULT ''",
-  "ALTER TABLE users ADD COLUMN discord_id TEXT NOT NULL DEFAULT ''",
-  "ALTER TABLE users ADD COLUMN discord_avatar TEXT NOT NULL DEFAULT ''",
-  "ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''",
-  "ALTER TABLE users ADD COLUMN rp_name TEXT NOT NULL DEFAULT ''",
-  "ALTER TABLE users ADD COLUMN ct_number TEXT NOT NULL DEFAULT ''",
-  "ALTER TABLE users ADD COLUMN rp_name_2 TEXT NOT NULL DEFAULT ''",
-  "ALTER TABLE users ADD COLUMN rp_name_3 TEXT NOT NULL DEFAULT ''",
-  "ALTER TABLE users ADD COLUMN account_status TEXT NOT NULL DEFAULT 'pending'",
-  "ALTER TABLE users ADD COLUMN unit_access TEXT NOT NULL DEFAULT '[]'"
-]) {
-  try {
-    db.exec(migration);
-  } catch (error) {
-    if (!String(error.message).includes("duplicate column")) throw error;
+async function dbAll(sql, params = []) {
+  if (usePostgres) {
+    const result = await pgPool.query(toPgSql(sql), params);
+    return result.rows;
+  }
+  return sqliteDb.prepare(sql).all(...params);
+}
+
+async function dbRun(sql, params = []) {
+  if (usePostgres) {
+    return pgPool.query(toPgSql(sql), params);
+  }
+  return sqliteDb.prepare(sql).run(...params);
+}
+
+async function initDatabase() {
+  if (usePostgres) {
+    const { Pool } = require("pg");
+    pgPool = new Pool({
+      connectionString: databaseUrl,
+      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false
+    });
+    await dbExec(`
+      CREATE TABLE IF NOT EXISTS app_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        data TEXT NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE,
+        password_salt TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'member',
+        discord_username TEXT NOT NULL DEFAULT '',
+        discord_id TEXT NOT NULL DEFAULT '',
+        discord_avatar TEXT NOT NULL DEFAULT '',
+        email TEXT NOT NULL DEFAULT '',
+        rp_name TEXT NOT NULL DEFAULT '',
+        ct_number TEXT NOT NULL DEFAULT '',
+        rp_name_2 TEXT NOT NULL DEFAULT '',
+        rp_name_3 TEXT NOT NULL DEFAULT '',
+        account_status TEXT NOT NULL DEFAULT 'pending',
+        unit_access TEXT NOT NULL DEFAULT '[]',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS sessions (
+        token TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMPTZ NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id SERIAL PRIMARY KEY,
+        actor_id INTEGER,
+        actor_name TEXT NOT NULL DEFAULT '',
+        action TEXT NOT NULL,
+        target TEXT NOT NULL DEFAULT '',
+        details TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    return;
+  }
+
+  sqliteDb = new DatabaseSync(dbPath);
+  await dbExec(`
+    CREATE TABLE IF NOT EXISTS app_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      data TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL UNIQUE,
+      password_salt TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      discord_username TEXT NOT NULL DEFAULT '',
+      discord_id TEXT NOT NULL DEFAULT '',
+      discord_avatar TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL DEFAULT '',
+      rp_name TEXT NOT NULL DEFAULT '',
+      ct_number TEXT NOT NULL DEFAULT '',
+      rp_name_2 TEXT NOT NULL DEFAULT '',
+      rp_name_3 TEXT NOT NULL DEFAULT '',
+      account_status TEXT NOT NULL DEFAULT 'pending',
+      unit_access TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      expires_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      actor_id INTEGER,
+      actor_name TEXT NOT NULL DEFAULT '',
+      action TEXT NOT NULL,
+      target TEXT NOT NULL DEFAULT '',
+      details TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  for (const migration of [
+    "ALTER TABLE users ADD COLUMN discord_username TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN discord_id TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN discord_avatar TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN rp_name TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN ct_number TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN rp_name_2 TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN rp_name_3 TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN account_status TEXT NOT NULL DEFAULT 'pending'",
+    "ALTER TABLE users ADD COLUMN unit_access TEXT NOT NULL DEFAULT '[]'"
+  ]) {
+    try {
+      await dbExec(migration);
+    } catch (error) {
+      if (!String(error.message).includes("duplicate column")) throw error;
+    }
   }
 }
 
@@ -196,27 +291,26 @@ function sanitizeUser(user) {
   };
 }
 
-function getAuthUser(request) {
+async function getAuthUser(request) {
   const header = request.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   if (!token) return null;
 
-  const row = db
-    .prepare(
-      `
+  const row = await dbGet(
+    `
         SELECT users.id, users.username, users.role, users.discord_username, users.discord_id, users.discord_avatar, users.email, users.rp_name, users.ct_number, users.rp_name_2, users.rp_name_3, users.account_status, users.unit_access
         FROM sessions
         JOIN users ON users.id = sessions.user_id
         WHERE sessions.token = ? AND sessions.expires_at > CURRENT_TIMESTAMP
-      `
-    )
-    .get(token);
+      `,
+    [token]
+  );
 
   return row || null;
 }
 
-function requireAuth(request, response) {
-  const user = getAuthUser(request);
+async function requireAuth(request, response) {
+  const user = await getAuthUser(request);
   if (!user) {
     sendJson(response, 401, { ok: false, error: "Login erforderlich" });
     return null;
@@ -224,8 +318,8 @@ function requireAuth(request, response) {
   return user;
 }
 
-function requireApproved(request, response) {
-  const user = requireAuth(request, response);
+async function requireApproved(request, response) {
+  const user = await requireAuth(request, response);
   if (!user) return null;
   if (user.role !== "owner" && user.account_status !== "approved") {
     sendJson(response, 403, { ok: false, error: "Account wartet auf Freischaltung" });
@@ -234,8 +328,8 @@ function requireApproved(request, response) {
   return user;
 }
 
-function requireOwner(request, response) {
-  const user = requireAuth(request, response);
+async function requireOwner(request, response) {
+  const user = await requireAuth(request, response);
   if (!user) return null;
   if (user.role !== "owner") {
     sendJson(response, 403, { ok: false, error: "Owner-Rechte erforderlich" });
@@ -244,30 +338,37 @@ function requireOwner(request, response) {
   return user;
 }
 
-function createSession(userId) {
+async function requireAdmin(request, response) {
+  const user = await requireAuth(request, response);
+  if (!user) return null;
+  if (!["owner", "admin"].includes(user.role)) {
+    sendJson(response, 403, { ok: false, error: "Admin-Rechte erforderlich" });
+    return null;
+  }
+  return user;
+}
+
+async function createSession(userId) {
   const token = crypto.randomBytes(32).toString("hex");
-  db.prepare(
-    "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, datetime('now', '+14 days'))"
-  ).run(token, userId);
+  await dbRun("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)", [token, userId, new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()]);
   return token;
 }
 
-function hasUsers() {
-  return db.prepare("SELECT COUNT(*) AS count FROM users").get().count > 0;
+async function hasUsers() {
+  return (await dbGet("SELECT COUNT(*) AS count FROM users")).count > 0;
 }
 
-function writeAudit(actor, action, target = "", details = {}) {
-  db.prepare("INSERT INTO audit_log (actor_id, actor_name, action, target, details) VALUES (?, ?, ?, ?, ?)")
-    .run(actor?.id || null, actor?.username || "system", action, target, JSON.stringify(details));
+async function writeAudit(actor, action, target = "", details = {}) {
+  await dbRun("INSERT INTO audit_log (actor_id, actor_name, action, target, details) VALUES (?, ?, ?, ?, ?)", [actor?.id || null, actor?.username || "system", action, target, JSON.stringify(details)]);
 }
 
-function getState() {
-  const row = db.prepare("SELECT data, updated_at FROM app_state WHERE id = 1").get();
+async function getState() {
+  const row = await dbGet("SELECT data, updated_at FROM app_state WHERE id = 1");
   if (!row) return null;
   return { ...JSON.parse(row.data), updatedAt: row.updated_at };
 }
 
-function saveState(payload) {
+async function saveState(payload) {
   const state = {
     threads: Array.isArray(payload.threads) ? payload.threads : [],
     threadReports: Array.isArray(payload.threadReports) ? payload.threadReports : [],
@@ -289,30 +390,32 @@ function saveState(payload) {
     permissions: payload.permissions && typeof payload.permissions === "object" ? payload.permissions : {}
   };
 
-  db.prepare(
+  await dbRun(
     `
       INSERT INTO app_state (id, data, updated_at)
       VALUES (1, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP
-    `
-  ).run(JSON.stringify(state));
+    `,
+    [JSON.stringify(state)]
+  );
 
   return getState();
 }
 
 async function handleApi(request, response, pathname) {
   if (pathname === "/api/health" && request.method === "GET") {
-    sendJson(response, 200, { ok: true, database: "sqlite", path: "data/galactic-forum.sqlite" });
+    sendJson(response, 200, { ok: true, database: usePostgres ? "postgres" : "sqlite", path: usePostgres ? "DATABASE_URL" : "data/galactic-forum.sqlite" });
     return true;
   }
 
   if (pathname === "/api/auth/status" && request.method === "GET") {
+    const usersExist = await hasUsers();
     sendJson(response, 200, {
       ok: true,
-      hasUsers: hasUsers(),
-      setupLocked: !hasUsers() && !ownerSetupCode,
+      hasUsers: usersExist,
+      setupLocked: !usersExist && !ownerSetupCode,
       discordEnabled: Boolean(discordClientId && discordClientSecret),
-      user: sanitizeUser(getAuthUser(request))
+      user: sanitizeUser(await getAuthUser(request))
     });
     return true;
   }
@@ -371,28 +474,27 @@ async function handleApi(request, response, pathname) {
 
       const discordUsername = discordUser.global_name || discordUser.username || `discord-${discordUser.id}`;
       const avatar = discordUser.avatar ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png` : "";
-      let user = db.prepare("SELECT * FROM users WHERE discord_id = ?").get(discordUser.id);
+      let user = await dbGet("SELECT * FROM users WHERE discord_id = ?", [discordUser.id]);
 
       if (!user) {
         const username = `discord:${discordUser.id}`;
         const { salt, hash } = hashPassword(crypto.randomBytes(24).toString("hex"));
-        const result = db
-          .prepare(
-            `
+        const result = await dbGet(
+          `
               INSERT INTO users (username, password_salt, password_hash, role, discord_username, discord_id, discord_avatar, email, rp_name, account_status, unit_access)
               VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?, 'pending', '[]')
-            `
-          )
-          .run(username, salt, hash, discordUsername, discordUser.id, avatar, discordUser.email || "", discordUsername);
-        user = db.prepare("SELECT * FROM users WHERE id = ?").get(result.lastInsertRowid);
-        writeAudit(user, "discord.registered", username, { discordId: discordUser.id });
+              RETURNING id
+            `,
+          [username, salt, hash, discordUsername, discordUser.id, avatar, discordUser.email || "", discordUsername]
+        );
+        user = await dbGet("SELECT * FROM users WHERE id = ?", [result.id]);
+        await writeAudit(user, "discord.registered", username, { discordId: discordUser.id });
       } else {
-        db.prepare("UPDATE users SET discord_username = ?, discord_avatar = ?, email = ? WHERE id = ?")
-          .run(discordUsername, avatar, discordUser.email || "", user.id);
-        user = db.prepare("SELECT * FROM users WHERE id = ?").get(user.id);
+        await dbRun("UPDATE users SET discord_username = ?, discord_avatar = ?, email = ? WHERE id = ?", [discordUsername, avatar, discordUser.email || "", user.id]);
+        user = await dbGet("SELECT * FROM users WHERE id = ?", [user.id]);
       }
 
-      const token = createSession(user.id);
+      const token = await createSession(user.id);
       sendRedirect(response, `/index.html?discord_token=${token}`, ["discord_oauth_state=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"]);
     } catch (error) {
       sendRedirect(response, `/index.html?discord_error=${encodeURIComponent(error.message)}`, ["discord_oauth_state=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"]);
@@ -401,7 +503,7 @@ async function handleApi(request, response, pathname) {
   }
 
   if (pathname === "/api/auth/setup" && request.method === "POST") {
-    if (hasUsers()) {
+    if (await hasUsers()) {
       sendJson(response, 409, { ok: false, error: "Setup wurde bereits abgeschlossen" });
       return true;
     }
@@ -422,14 +524,13 @@ async function handleApi(request, response, pathname) {
       }
 
       const { salt, hash } = hashPassword(password);
-      const result = db
-        .prepare(
-          `
+      const result = await dbGet(
+        `
             INSERT INTO users (username, password_salt, password_hash, role, discord_username, rp_name, ct_number, rp_name_2, rp_name_3, account_status, unit_access)
             VALUES (?, ?, ?, 'owner', ?, ?, ?, ?, ?, 'approved', ?)
-          `
-        )
-        .run(
+            RETURNING id
+          `,
+        [
           username,
           salt,
           hash,
@@ -439,9 +540,10 @@ async function handleApi(request, response, pathname) {
           String(payload.rpName2 || "").trim(),
           String(payload.rpName3 || "").trim(),
           JSON.stringify(["212th", "501st", "91st", "Fleet Crew", "5th", "Flottensicherheit"])
-        );
-      const user = db.prepare("SELECT * FROM users WHERE id = ?").get(result.lastInsertRowid);
-      sendJson(response, 200, { ok: true, token: createSession(user.id), user: sanitizeUser(user) });
+        ]
+      );
+      const user = await dbGet("SELECT * FROM users WHERE id = ?", [result.id]);
+      sendJson(response, 200, { ok: true, token: await createSession(user.id), user: sanitizeUser(user) });
     } catch (error) {
       sendJson(response, 400, { ok: false, error: error.message });
     }
@@ -463,14 +565,13 @@ async function handleApi(request, response, pathname) {
       }
 
       const { salt, hash } = hashPassword(password);
-      const result = db
-        .prepare(
-          `
+      const result = await dbGet(
+        `
             INSERT INTO users (username, password_salt, password_hash, role, discord_username, rp_name, ct_number, rp_name_2, rp_name_3, account_status, unit_access)
             VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?, 'pending', '[]')
-          `
-        )
-        .run(
+            RETURNING id
+          `,
+        [
           username,
           salt,
           hash,
@@ -479,9 +580,10 @@ async function handleApi(request, response, pathname) {
           ctNumber,
           String(payload.rpName2 || "").trim(),
           String(payload.rpName3 || "").trim()
-        );
-      const user = db.prepare("SELECT * FROM users WHERE id = ?").get(result.lastInsertRowid);
-      sendJson(response, 200, { ok: true, token: createSession(user.id), user: sanitizeUser(user) });
+        ]
+      );
+      const user = await dbGet("SELECT * FROM users WHERE id = ?", [result.id]);
+      sendJson(response, 200, { ok: true, token: await createSession(user.id), user: sanitizeUser(user) });
     } catch (error) {
       const message = String(error.message).includes("UNIQUE") ? "Dieser Discord-/Benutzername existiert bereits" : error.message;
       sendJson(response, 400, { ok: false, error: message });
@@ -494,12 +596,12 @@ async function handleApi(request, response, pathname) {
       const payload = await readJsonBody(request);
       const username = String(payload.username || "").trim();
       const password = String(payload.password || "");
-      const user = db.prepare("SELECT * FROM users WHERE username = ?").get(username);
+      const user = await dbGet("SELECT * FROM users WHERE username = ?", [username]);
       if (!user || !verifyPassword(password, user.password_salt, user.password_hash)) {
         sendJson(response, 401, { ok: false, error: "Login abgelehnt" });
         return true;
       }
-      sendJson(response, 200, { ok: true, token: createSession(user.id), user: sanitizeUser(user) });
+      sendJson(response, 200, { ok: true, token: await createSession(user.id), user: sanitizeUser(user) });
     } catch (error) {
       sendJson(response, 400, { ok: false, error: error.message });
     }
@@ -509,13 +611,13 @@ async function handleApi(request, response, pathname) {
   if (pathname === "/api/auth/logout" && request.method === "POST") {
     const header = request.headers.authorization || "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-    if (token) db.prepare("DELETE FROM sessions WHERE token = ?").run(token);
+    if (token) await dbRun("DELETE FROM sessions WHERE token = ?", [token]);
     sendJson(response, 200, { ok: true });
     return true;
   }
 
   if (pathname === "/api/auth/password" && request.method === "POST") {
-    const user = requireApproved(request, response);
+    const user = await requireApproved(request, response);
     if (!user) return true;
     try {
       const payload = await readJsonBody(request);
@@ -525,9 +627,9 @@ async function handleApi(request, response, pathname) {
         return true;
       }
       const { salt, hash } = hashPassword(password);
-      db.prepare("UPDATE users SET password_salt = ?, password_hash = ? WHERE id = ?").run(salt, hash, user.id);
-      db.prepare("DELETE FROM sessions WHERE user_id = ? AND token <> ?").run(user.id, (request.headers.authorization || "").replace(/^Bearer /, ""));
-      writeAudit(user, "password.changed", user.username, {});
+      await dbRun("UPDATE users SET password_salt = ?, password_hash = ? WHERE id = ?", [salt, hash, user.id]);
+      await dbRun("DELETE FROM sessions WHERE user_id = ? AND token <> ?", [user.id, (request.headers.authorization || "").replace(/^Bearer /, "")]);
+      await writeAudit(user, "password.changed", user.username, {});
       sendJson(response, 200, { ok: true });
     } catch (error) {
       sendJson(response, 400, { ok: false, error: error.message });
@@ -536,40 +638,42 @@ async function handleApi(request, response, pathname) {
   }
 
   if (pathname === "/api/admin/users" && request.method === "GET") {
-    if (!requireOwner(request, response)) return true;
-    const users = db
-      .prepare("SELECT id, username, role, discord_username, discord_id, discord_avatar, email, rp_name, ct_number, rp_name_2, rp_name_3, account_status, unit_access, created_at FROM users ORDER BY created_at DESC")
-      .all()
+    if (!await requireAdmin(request, response)) return true;
+    const users = (await dbAll("SELECT id, username, role, discord_username, discord_id, discord_avatar, email, rp_name, ct_number, rp_name_2, rp_name_3, account_status, unit_access, created_at FROM users ORDER BY created_at DESC"))
       .map(sanitizeUser);
     sendJson(response, 200, { ok: true, users });
     return true;
   }
 
   if (pathname === "/api/admin/audit" && request.method === "GET") {
-    if (!requireOwner(request, response)) return true;
-    const rows = db.prepare("SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 120").all();
+    if (!await requireOwner(request, response)) return true;
+    const rows = await dbAll("SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 120");
     sendJson(response, 200, { ok: true, entries: rows.map((row) => ({ ...row, details: JSON.parse(row.details || "{}") })) });
     return true;
   }
 
   const userMatch = pathname.match(/^\/api\/admin\/users\/(\d+)$/);
   if (userMatch && request.method === "PATCH") {
-    const actor = requireOwner(request, response);
+    const actor = await requireAdmin(request, response);
     if (!actor) return true;
     try {
       const id = Number(userMatch[1]);
       const payload = await readJsonBody(request);
-      const current = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+      const current = await dbGet("SELECT * FROM users WHERE id = ?", [id]);
       if (!current) {
         sendJson(response, 404, { ok: false, error: "Nutzer nicht gefunden" });
         return true;
       }
-      const role = ["user", "admin", "owner"].includes(payload.role) ? payload.role : current.role;
+      if (actor.role !== "owner" && current.role === "owner") {
+        sendJson(response, 403, { ok: false, error: "Owner-Accounts duerfen nur vom Owner bearbeitet werden" });
+        return true;
+      }
+      const role = actor.role === "owner" && ["user", "admin", "owner"].includes(payload.role) ? payload.role : current.role;
       const status = ["pending", "approved", "blocked"].includes(payload.status) ? payload.status : current.account_status;
       const unitAccess = Array.isArray(payload.unitAccess) ? payload.unitAccess : JSON.parse(current.unit_access || "[]");
-      db.prepare("UPDATE users SET role = ?, account_status = ?, unit_access = ? WHERE id = ?").run(role, status, JSON.stringify(unitAccess), id);
-      writeAudit(actor, "user.updated", current.username, { role, status, unitAccess });
-      sendJson(response, 200, { ok: true, user: sanitizeUser(db.prepare("SELECT * FROM users WHERE id = ?").get(id)) });
+      await dbRun("UPDATE users SET role = ?, account_status = ?, unit_access = ? WHERE id = ?", [role, status, JSON.stringify(unitAccess), id]);
+      await writeAudit(actor, "user.updated", current.username, { role, status, unitAccess });
+      sendJson(response, 200, { ok: true, user: sanitizeUser(await dbGet("SELECT * FROM users WHERE id = ?", [id])) });
     } catch (error) {
       sendJson(response, 400, { ok: false, error: error.message });
     }
@@ -578,7 +682,7 @@ async function handleApi(request, response, pathname) {
 
   const resetMatch = pathname.match(/^\/api\/admin\/users\/(\d+)\/password$/);
   if (resetMatch && request.method === "POST") {
-    const actor = requireOwner(request, response);
+    const actor = await requireOwner(request, response);
     if (!actor) return true;
     try {
       const id = Number(resetMatch[1]);
@@ -588,15 +692,15 @@ async function handleApi(request, response, pathname) {
         sendJson(response, 400, { ok: false, error: "Passwort muss mindestens 6 Zeichen haben" });
         return true;
       }
-      const target = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+      const target = await dbGet("SELECT * FROM users WHERE id = ?", [id]);
       if (!target) {
         sendJson(response, 404, { ok: false, error: "Nutzer nicht gefunden" });
         return true;
       }
       const { salt, hash } = hashPassword(password);
-      db.prepare("UPDATE users SET password_salt = ?, password_hash = ? WHERE id = ?").run(salt, hash, id);
-      db.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
-      writeAudit(actor, "password.reset", target.username, {});
+      await dbRun("UPDATE users SET password_salt = ?, password_hash = ? WHERE id = ?", [salt, hash, id]);
+      await dbRun("DELETE FROM sessions WHERE user_id = ?", [id]);
+      await writeAudit(actor, "password.reset", target.username, {});
       sendJson(response, 200, { ok: true });
     } catch (error) {
       sendJson(response, 400, { ok: false, error: error.message });
@@ -605,16 +709,16 @@ async function handleApi(request, response, pathname) {
   }
 
   if (pathname === "/api/state" && request.method === "GET") {
-    if (!requireApproved(request, response)) return true;
-    sendJson(response, 200, { ok: true, state: getState() });
+    if (!await requireApproved(request, response)) return true;
+    sendJson(response, 200, { ok: true, state: await getState() });
     return true;
   }
 
   if (pathname === "/api/state" && request.method === "PUT") {
-    if (!requireApproved(request, response)) return true;
+    if (!await requireApproved(request, response)) return true;
     try {
       const payload = await readJsonBody(request);
-      sendJson(response, 200, { ok: true, state: saveState(payload) });
+      sendJson(response, 200, { ok: true, state: await saveState(payload) });
     } catch (error) {
       sendJson(response, 400, { ok: false, error: error.message });
     }
@@ -658,7 +762,14 @@ const server = http.createServer(async (request, response) => {
   sendStatic(request, response, url.pathname);
 });
 
-server.listen(port, () => {
-  console.log(`Galactic Forum Backend laeuft auf http://localhost:${port}`);
-  console.log(`SQLite Datenbank: ${dbPath}`);
-});
+initDatabase()
+  .then(() => {
+    server.listen(port, () => {
+      console.log(`Galactic Forum Backend laeuft auf http://localhost:${port}`);
+      console.log(usePostgres ? "PostgreSQL Datenbank: DATABASE_URL" : `SQLite Datenbank: ${dbPath}`);
+    });
+  })
+  .catch((error) => {
+    console.error("Datenbank konnte nicht gestartet werden:", error);
+    process.exit(1);
+  });
